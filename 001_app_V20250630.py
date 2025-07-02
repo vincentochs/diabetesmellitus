@@ -102,10 +102,10 @@ training_mae = 2.5
 @st.cache_data() # We use this decorator so this initialization doesn't run every time the user change into the page
 def initialize_app():
     # Load Regression Model
-    with open(r'models\001_Regression_Model.sav' , 'rb') as export_model:
+    with open(r'001_Regression_Model.sav' , 'rb') as export_model:
         regression_model = pickle.load(export_model) 
     # Load Classification Model
-    with open(r'models\001_Classification_Model.sav' , 'rb') as export_model:
+    with open(r'001_Classification_Model.sav' , 'rb') as export_model:
         classification_model = pickle.load(export_model) 
 
     print('App Initialized correctly!')
