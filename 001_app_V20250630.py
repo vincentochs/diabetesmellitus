@@ -29,6 +29,7 @@ import altair as alt
 # UTils
 import pickle
 from scipy.interpolate import make_interp_spline
+import os
 
 # Format of numbers
 print('Libraries loaded')
@@ -102,10 +103,12 @@ training_mae = 2.5
 @st.cache_data() # We use this decorator so this initialization doesn't run every time the user change into the page
 def initialize_app():
     # Load Regression Model
-    with open(r'001_Regression_Model.sav' , 'rb') as export_model:
+    model_path = os.path.join('001_Regression_Model.sav')
+    with open(model_path , 'rb') as export_model:
         regression_model = pickle.load(export_model) 
     # Load Classification Model
-    with open(r'001_Classification_Model.sav' , 'rb') as export_model:
+    model_path = os.path.join('001_Classification_Model.sav')
+    with open(model_path, 'rb') as export_model:
         classification_model = pickle.load(export_model) 
 
     print('App Initialized correctly!')
@@ -335,66 +338,9 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
     """, unsafe_allow_html=True)
 
 ###############################################################################
-def find_bmi_thresholds(clf_model, df_final, time_points=['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y']):
-
-    thresholds = []
-    bmi_range = np.arange(10, 65, 0.1)  # Test BMI values from 20 to 50
-    
-    # Time step mapping
-    time_map = {
-        'Pre': ('BMI before surgery', 'dm3m', 0, 'DMII_preoperative'),
-        '3m': ('bmi3', 'dm6m', 1, 'dm3m'),
-        '6m': ('bmi6', 'dm12m', 2, 'dm6m'),
-        '12m': ('bmi12', 'dm18m', 3, 'dm12m'),
-        '18m': ('bmi18', 'dm2y', 4, 'dm18m'),
-        '2y': ('bmi2y', 'dm3y', 5, 'dm2y'),
-        '3y': ('bmi3y', 'dm4y', 6, 'dm3y'),
-        '4y': ('bmi4y', 'dm5y', 7, 'dm4y'),
-    }
-    
-    for time_point in time_points:
-        bmi_col, next_dm_col, time_step, dm_current = time_map[time_point]
-        
-        # Test different BMI values
-        threshold_found = False
-        threshold_bmi = None
-        
-        for test_bmi in bmi_range:
-            # Create test data
-            test_data = df_final.copy()
-            test_data[bmi_col] = test_bmi
-            
-            # Prepare features for model
-            features = test_data.copy()
-            # Set DM(t) and time_step for the model
-            features['DM(t)'] = features[dm_current]
-            features['time_step'] = time_step
-            
-            # Select only the features needed by the model
-            features = features[clf_model.feature_names_in_].copy()
-            
-            # Make prediction
-            pred_prob = clf_model.predict_proba(features)[0][1]
-            
-            # If probability of diabetes is less than 0.5 (predicting remission)
-            if pred_prob < 0.5 and not threshold_found:
-                threshold_bmi = test_bmi
-                threshold_found = True
-                break
-        
-        thresholds.append({
-            'Time Point': time_point,
-            'BMI Threshold': threshold_bmi if threshold_bmi is not None else "No threshold found",
-            'Next Time Point': next_dm_col,
-            'Probability at Threshold': clf_model.predict_proba(features)[0][1] if threshold_bmi is not None else None
-        })
-    
-    return pd.DataFrame(thresholds)
-
-
 def find_bmi_thresholds_speed(clf_model, df_final, time_points=['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y']):
     thresholds = []
-    bmi_range = np.arange(10, 65, 0.1)  # Test BMI values from 20 to 40
+    bmi_range = np.arange(15, 50, 0.5)  # Test BMI values from 20 to 40
     
     time_map = {
         'Pre': ('BMI before surgery', 'dm3m', 0, 'DMII_preoperative'),
@@ -521,219 +467,218 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
     time_step_map = {col: dictionary_categorical_features['time_step'][col] for col in target_columns}
     
     # Repeat until no NaN values remain in the BMI columns
-    with st.status("Making predictions.."):
-        counter = 1
-        while df_classification[target_columns].isna().any().any():
-            # Collect rows for batch processing
-            predictions = []
-            rows_to_update = []
+    counter = 1
+    while df_classification[target_columns].isna().any().any():
+        # Collect rows for batch processing
+        predictions = []
+        rows_to_update = []
+    
+        for row_index in range(df_classification.shape[0]):
+            row = df_classification.loc[row_index]
+    
+            for bmi_t, bmi_t_plus1 in iterations:
+                # Check if BMI(t) is not NaN and BMI(t+1) is NaN
+                if pd.notna(row[bmi_t]) and pd.isna(row[bmi_t_plus1]):
+                    # Create feature set for prediction
+                    time_step = time_step_map[bmi_t]
+                    aux_x = pd.concat([
+                        row.drop(labels=target_columns),  # X vector (excluding BMI columns)
+                        pd.Series({f'BMI(t)': row[bmi_t], 'time_step': time_step})
+                    ]).to_frame().T
+    
+                    aux_x = aux_x[reg_model.feature_names_in_.tolist()]  # Ensure correct column order
+                    predictions.append(aux_x)
+                    rows_to_update.append((row_index, bmi_t_plus1))
+    
+        # Predict in batches
+        if predictions:
+            predictions_df_2 = pd.concat(predictions, ignore_index=True)
+            predicted_values = reg_model.predict(predictions_df_2)
+    
+            # Update the DataFrame with predictions
+            for (row_index, target_column), prediction in zip(rows_to_update, predicted_values):
+                df_classification.at[row_index, target_column] = prediction
+    
+        counter += 1
         
-            for row_index in range(df_classification.shape[0]):
-                row = df_classification.loc[row_index]
-        
-                for bmi_t, bmi_t_plus1 in iterations:
-                    # Check if BMI(t) is not NaN and BMI(t+1) is NaN
-                    if pd.notna(row[bmi_t]) and pd.isna(row[bmi_t_plus1]):
-                        # Create feature set for prediction
-                        time_step = time_step_map[bmi_t]
-                        aux_x = pd.concat([
-                            row.drop(labels=target_columns),  # X vector (excluding BMI columns)
-                            pd.Series({f'BMI(t)': row[bmi_t], 'time_step': time_step})
-                        ]).to_frame().T
-        
-                        aux_x = aux_x[reg_model.feature_names_in_.tolist()]  # Ensure correct column order
-                        predictions.append(aux_x)
-                        rows_to_update.append((row_index, bmi_t_plus1))
-        
-            # Predict in batches
-            if predictions:
-                predictions_df_2 = pd.concat(predictions, ignore_index=True)
-                predicted_values = reg_model.predict(predictions_df_2)
-        
-                # Update the DataFrame with predictions
-                for (row_index, target_column), prediction in zip(rows_to_update, predicted_values):
-                    df_classification.at[row_index, target_column] = prediction
-        
+    ###########################################################################
+    # Classification part
+    iterations = [['DMII_preoperative' , 'dm3m'],
+              ['dm3m' , 'dm6m'],
+              ['dm6m' , 'dm12m'],
+              ['dm12m' , 'dm18m'],
+              ['dm18m' , 'dm2y'],
+              ['dm2y' , 'dm3y'],
+              ['dm3y' , 'dm4y'],
+              ['dm4y' , 'dm5y']]
+    target_columns = ['DMII_preoperative',
+                      'dm3m',
+                      'dm6m',
+                      'dm12m',
+                      'dm18m',
+                      'dm2y',
+                      'dm3y',
+                      'dm4y',
+                      'dm5y']
+    target_time_steps = {'DMII_preoperative' : 0,
+                         'dm3m' : 1,
+                         'dm6m' : 2,
+                         'dm12m' : 3,
+                         'dm18m' : 4,
+                         'dm2y' : 5,
+                         'dm3y' : 6,
+                         'dm4y' : 7,
+                         'dm5y' : 8}
+    target_classification = ['DM(t+1)']
+    numeric_columns = ['age_years' , 'BMI before surgery',
+                      'bmi3',
+                      'bmi6',
+                      'bmi12',
+                      'bmi18',
+                      'bmi2y',
+                      'bmi3y',
+                      'bmi4y',
+                      'bmi5y']
+    probas_columns = ['DMII_preoperative_prob',
+                      'dm3m_prob',
+                      'dm6m_prob',
+                      'dm12m_prob',
+                      'dm18m_prob',
+                      'dm2y_prob',
+                      'dm3y_prob',
+                      'dm4y_prob',
+                      'dm5y_prob']
+    # Placeholder for final vector
+    df_final = df_classification.copy()
+    df_final[target_columns] = np.nan # Fill all future predictions with nan
+    df_final['DMII_preoperative'] = df_classification['DMII_preoperative']
+    df_final[probas_columns] = np.nan
+    df_final[probas_columns[0]] = 1 if df_final[target_columns[0]].values[0] == 1 else 0
+    # Identify the columns and their corresponding time steps for faster access
+    time_step_map = {col: target_time_steps[col] for col in target_columns}
+    
+    # Repeat until no NaN values remain in the BMI columns
+    counter = 1
+    while df_final[target_columns[1:]].isna().any().any():
+        # Collect rows for batch processing
+        predictions = []
+        rows_to_update = []
+    
+        for row_index in range(df_final.shape[0]):
+            #print(f"Row:{row_index}")
+            row = df_final.loc[row_index]
+    
+            for dm_t, dm_t_plus1 in iterations:
+                # Check if DM(t) is not NaN and DM(t+1) is NaN
+                if pd.notna(row[dm_t]) and pd.isna(row[dm_t_plus1]):
+                    # Create feature set for prediction
+                    time_step = time_step_map[dm_t]
+                    aux_x = pd.concat([
+                        row.drop(labels=target_columns),  # X vector (excluding BMI columns)
+                        pd.Series({f'DM(t)': row[dm_t], 'time_step': time_step})
+                    ]).to_frame().T
+    
+                    aux_x = aux_x[clf_model.feature_names_in_.tolist()]  # Ensure correct column order
+                    predictions.append(aux_x)
+                    rows_to_update.append((row_index, dm_t_plus1 , probas_columns[iterations.index([dm_t , dm_t_plus1]) + 1]))
+    
+        # Predict in batches
+        if predictions:
+            predictions_df = pd.concat(predictions, ignore_index=True)
+            predicted_values = clf_model.predict(predictions_df)
+            predicted_probas = clf_model.predict_proba(predictions_df)[: , 1]
+            
+            # Hard code adjustment deppending of patients information
+            
+            # Remission odds decline especially >50–60 years of age.
+            print(f"Adjustment of DM likelihood for column {probas_columns[counter]}")
+            print(f"Original probs: {predicted_probas}")
+            predicted_probas = np.select(condlist = [(predictions_df['age_years'] > 50)&(predictions_df['age_years'] < 60)],
+                                         choicelist = [np.max([predicted_probas - 0.02 , [0]])],
+                                         default = predicted_probas)
+            print(f"Probas changed by age: {predicted_probas}")
+            # BMI threshold impact (lower BMI = better remission odds)
+            predicted_probas = np.select(condlist = [predictions_df['bmi3'] > 30,
+                                                     predictions_df['bmi6'] > 30,
+                                                     predictions_df['bmi12'] > 30,
+                                                     predictions_df['bmi18'] > 30,
+                                                     predictions_df['bmi2y'] > 30,
+                                                     predictions_df['bmi3y'] > 30,
+                                                     predictions_df['bmi4y'] > 30,
+                                                     predictions_df['bmi5y'] > 30],
+                                         choicelist = [np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]]),
+                                                       np.min([predicted_probas + 0.10 , [1]])],
+                                         default = predicted_probas)
+            print(f"Probas changed by BMI: {predicted_probas}")
+            # Hypertension reduces remission odds
+            predicted_probas = np.select(condlist = [predictions_df['hypertension'].values[0] == 1],
+                                         choicelist = [np.min([predicted_probas + 0.03 , [1]])],
+                                         default = predicted_probas)
+            print(f"Probas changed by Hypertension: {predicted_probas}")
+            # Surgery Type
+            predicted_probas = np.select(condlist = [predictions_df['surgery'].values[0] == 2], #LRYGB helps to reduce DM odds
+                                         choicelist = [np.max([predicted_probas - 0.05 , [0]])],
+                                         default = predicted_probas)
+            print(f"Probas changed by Syrgery Type: {predicted_probas}")
+            
+            # Re compute DM class due odds changes
+            print(f"Original class: {predicted_values}")
+            predicted_values = np.select(condlist = [predicted_probas > 0.5],
+                                         choicelist = [1.],
+                                         default = [0.])
+            print(f"Updated class {predicted_values}")
+
+
+
+            # Update the DataFrame with predictions
+            for (row_index, target_column , prob_column), prediction , probas in zip(rows_to_update, predicted_values , predicted_probas):
+                df_final.at[row_index, target_column] = prediction
+                df_final.at[row_index, prob_column] = probas
+                
+        if counter > 9:
+            break
+        else:
             counter += 1
             
-        ###########################################################################
-        # Classification part
-        iterations = [['DMII_preoperative' , 'dm3m'],
-                  ['dm3m' , 'dm6m'],
-                  ['dm6m' , 'dm12m'],
-                  ['dm12m' , 'dm18m'],
-                  ['dm18m' , 'dm2y'],
-                  ['dm2y' , 'dm3y'],
-                  ['dm3y' , 'dm4y'],
-                  ['dm4y' , 'dm5y']]
-        target_columns = ['DMII_preoperative',
-                          'dm3m',
-                          'dm6m',
-                          'dm12m',
-                          'dm18m',
-                          'dm2y',
-                          'dm3y',
-                          'dm4y',
-                          'dm5y']
-        target_time_steps = {'DMII_preoperative' : 0,
-                             'dm3m' : 1,
-                             'dm6m' : 2,
-                             'dm12m' : 3,
-                             'dm18m' : 4,
-                             'dm2y' : 5,
-                             'dm3y' : 6,
-                             'dm4y' : 7,
-                             'dm5y' : 8}
-        target_classification = ['DM(t+1)']
-        numeric_columns = ['age_years' , 'BMI before surgery',
-                          'bmi3',
-                          'bmi6',
-                          'bmi12',
-                          'bmi18',
-                          'bmi2y',
-                          'bmi3y',
-                          'bmi4y',
-                          'bmi5y']
-        probas_columns = ['DMII_preoperative_prob',
-                          'dm3m_prob',
-                          'dm6m_prob',
-                          'dm12m_prob',
-                          'dm18m_prob',
-                          'dm2y_prob',
-                          'dm3y_prob',
-                          'dm4y_prob',
-                          'dm5y_prob']
-        # Placeholder for final vector
-        df_final = df_classification.copy()
-        df_final[target_columns] = np.nan # Fill all future predictions with nan
-        df_final['DMII_preoperative'] = df_classification['DMII_preoperative']
-        df_final[probas_columns] = np.nan
-        df_final[probas_columns[0]] = 1 if df_final[target_columns[0]].values[0] == 1 else 0
-        # Identify the columns and their corresponding time steps for faster access
-        time_step_map = {col: target_time_steps[col] for col in target_columns}
-        
-        # Repeat until no NaN values remain in the BMI columns
-        counter = 1
-        while df_final[target_columns[1:]].isna().any().any():
-            # Collect rows for batch processing
-            predictions = []
-            rows_to_update = []
-        
-            for row_index in range(df_final.shape[0]):
-                #print(f"Row:{row_index}")
-                row = df_final.loc[row_index]
-        
-                for dm_t, dm_t_plus1 in iterations:
-                    # Check if DM(t) is not NaN and DM(t+1) is NaN
-                    if pd.notna(row[dm_t]) and pd.isna(row[dm_t_plus1]):
-                        # Create feature set for prediction
-                        time_step = time_step_map[dm_t]
-                        aux_x = pd.concat([
-                            row.drop(labels=target_columns),  # X vector (excluding BMI columns)
-                            pd.Series({f'DM(t)': row[dm_t], 'time_step': time_step})
-                        ]).to_frame().T
-        
-                        aux_x = aux_x[clf_model.feature_names_in_.tolist()]  # Ensure correct column order
-                        predictions.append(aux_x)
-                        rows_to_update.append((row_index, dm_t_plus1 , probas_columns[iterations.index([dm_t , dm_t_plus1]) + 1]))
-        
-            # Predict in batches
-            if predictions:
-                predictions_df = pd.concat(predictions, ignore_index=True)
-                predicted_values = clf_model.predict(predictions_df)
-                predicted_probas = clf_model.predict_proba(predictions_df)[: , 1]
-                
-                # Hard code adjustment deppending of patients information
-                
-                # Remission odds decline especially >50–60 years of age.
-                print(f"Adjustment of DM likelihood for column {probas_columns[counter]}")
-                print(f"Original probs: {predicted_probas}")
-                predicted_probas = np.select(condlist = [(predictions_df['age_years'] > 50)&(predictions_df['age_years'] < 60)],
-                                             choicelist = [np.max([predicted_probas - 0.02 , [0]])],
-                                             default = predicted_probas)
-                print(f"Probas changed by age: {predicted_probas}")
-                # BMI threshold impact (lower BMI = better remission odds)
-                predicted_probas = np.select(condlist = [predictions_df['bmi3'] > 30,
-                                                         predictions_df['bmi6'] > 30,
-                                                         predictions_df['bmi12'] > 30,
-                                                         predictions_df['bmi18'] > 30,
-                                                         predictions_df['bmi2y'] > 30,
-                                                         predictions_df['bmi3y'] > 30,
-                                                         predictions_df['bmi4y'] > 30,
-                                                         predictions_df['bmi5y'] > 30],
-                                             choicelist = [np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]]),
-                                                           np.min([predicted_probas + 0.10 , [1]])],
-                                             default = predicted_probas)
-                print(f"Probas changed by BMI: {predicted_probas}")
-                # Hypertension reduces remission odds
-                predicted_probas = np.select(condlist = [predictions_df['hypertension'].values[0] == 1],
-                                             choicelist = [np.min([predicted_probas + 0.03 , [1]])],
-                                             default = predicted_probas)
-                print(f"Probas changed by Hypertension: {predicted_probas}")
-                # Surgery Type
-                predicted_probas = np.select(condlist = [predictions_df['surgery'].values[0] == 2], #LRYGB helps to reduce DM odds
-                                             choicelist = [np.max([predicted_probas - 0.05 , [0]])],
-                                             default = predicted_probas)
-                print(f"Probas changed by Syrgery Type: {predicted_probas}")
-                
-                # Re compute DM class due odds changes
-                print(f"Original class: {predicted_values}")
-                predicted_values = np.select(condlist = [predicted_probas > 0.5],
-                                             choicelist = [1.],
-                                             default = [0.])
-                print(f"Updated class {predicted_values}")
+    # Confindent interval
+    # Add confidence intervals (95% confidence level)
+    confidence_level = 0.90
+    z_score = 1.67  # 99% confidence level
+
+    # Calculate confidence intervals for BMI predictions
+    bmi_columns = ['BMI before surgery', 'bmi3', 'bmi6', 'bmi12', 'bmi18', 'bmi2y', 'bmi3y', 'bmi4y', 'bmi5y']
     
-    
-    
-                # Update the DataFrame with predictions
-                for (row_index, target_column , prob_column), prediction , probas in zip(rows_to_update, predicted_values , predicted_probas):
-                    df_final.at[row_index, target_column] = prediction
-                    df_final.at[row_index, prob_column] = probas
-                    
-            if counter > 9:
-                break
-            else:
-                counter += 1
-                
-        # Confindent interval
-        # Add confidence intervals (95% confidence level)
-        confidence_level = 0.90
-        z_score = 1.67  # 99% confidence level
-    
-        # Calculate confidence intervals for BMI predictions
-        bmi_columns = ['BMI before surgery', 'bmi3', 'bmi6', 'bmi12', 'bmi18', 'bmi2y', 'bmi3y', 'bmi4y', 'bmi5y']
+    # Initialize confidence interval columns
+    for col in bmi_columns:
+        df_final[f'{col}_ci_lower'] = df_final[col]
+        df_final[f'{col}_ci_upper'] = df_final[col]
         
-        # Initialize confidence interval columns
-        for col in bmi_columns:
-            df_final[f'{col}_ci_lower'] = df_final[col]
-            df_final[f'{col}_ci_upper'] = df_final[col]
-            
-            if col != 'BMI before surgery':  # Skip the initial BMI which is known
-                std_error = df_final[col].std() if not pd.isna(df_final[col].std()) else df_final[col].mean() * 0.1
-                #df_final[f'{col}_ci_lower'] = df_final[col] - (z_score * std_error)
-                #df_final[f'{col}_ci_upper'] = df_final[col] + (z_score * std_error)
-                df_final[f'{col}_ci_lower'] = df_final[col] - training_mae
-                df_final[f'{col}_ci_upper'] = df_final[col] + training_mae
-        
-        # Create a summary dataframe for display
-        summary_df = pd.DataFrame({
-            'Time': ['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y', '5y'],
-            'BMI': df_final[bmi_columns].iloc[0].values,
-            'BMI CI Lower': df_final[[f'{col}_ci_lower' for col in bmi_columns]].iloc[0].values,
-            'BMI CI Upper': df_final[[f'{col}_ci_upper' for col in bmi_columns]].iloc[0].values,
-            'DM Status': df_final[['DMII_preoperative', 'dm3m', 'dm6m', 'dm12m', 'dm18m', 'dm2y', 'dm3y', 'dm4y', 'dm5y']].iloc[0].values,
-            'DM Likelihood (%)': (df_final[['DMII_preoperative_prob', 'dm3m_prob', 'dm6m_prob', 'dm12m_prob', 'dm18m_prob', 'dm2y_prob', 'dm3y_prob', 'dm4y_prob', 'dm5y_prob']].iloc[0].values * 100).round(2)
-        })
-        
-        summary_df['DM Status'] = np.select(condlist = [summary_df[ 'DM Status'] == 1],
-                                            choicelist = ['Diabetes'],
-                                            default = 'Healed')  
+        if col != 'BMI before surgery':  # Skip the initial BMI which is known
+            std_error = df_final[col].std() if not pd.isna(df_final[col].std()) else df_final[col].mean() * 0.1
+            #df_final[f'{col}_ci_lower'] = df_final[col] - (z_score * std_error)
+            #df_final[f'{col}_ci_upper'] = df_final[col] + (z_score * std_error)
+            df_final[f'{col}_ci_lower'] = df_final[col] - training_mae
+            df_final[f'{col}_ci_upper'] = df_final[col] + training_mae
+    
+    # Create a summary dataframe for display
+    summary_df = pd.DataFrame({
+        'Time': ['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y', '5y'],
+        'BMI': df_final[bmi_columns].iloc[0].values,
+        'BMI CI Lower': df_final[[f'{col}_ci_lower' for col in bmi_columns]].iloc[0].values,
+        'BMI CI Upper': df_final[[f'{col}_ci_upper' for col in bmi_columns]].iloc[0].values,
+        'DM Status': df_final[['DMII_preoperative', 'dm3m', 'dm6m', 'dm12m', 'dm18m', 'dm2y', 'dm3y', 'dm4y', 'dm5y']].iloc[0].values,
+        'DM Likelihood (%)': (df_final[['DMII_preoperative_prob', 'dm3m_prob', 'dm6m_prob', 'dm12m_prob', 'dm18m_prob', 'dm2y_prob', 'dm3y_prob', 'dm4y_prob', 'dm5y_prob']].iloc[0].values * 100).round(2)
+    })
+    
+    summary_df['DM Status'] = np.select(condlist = [summary_df[ 'DM Status'] == 1],
+                                        choicelist = ['Diabetes'],
+                                        default = 'Healed')  
         
     # Display the summary dataframe
     #st.dataframe(summary_df.style.format({
@@ -754,7 +699,7 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
     # Create the chart with thresholds
     chart = create_animated_evolution_chart(df_final, clf_model, predictions_df, threshold_df)
     # Display Threshold Table
-    display_threshold_analysis(threshold_df)
+    #display_threshold_analysis(threshold_df)
     
     
     return predictions
@@ -762,7 +707,8 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
 ###############################################################################
 # Page configuration
 st.set_page_config(
-    page_title="AL Prediction App"
+    page_title="AL Prediction App",
+    layout = 'wide'
 )
 st.set_option('deprecation.showPyplotGlobalUse', False)
 # Initialize app
@@ -901,6 +847,13 @@ if selected == 'Prediction':
                                     'surgery' : [surgery],
                                     'normal_dmII_pattern' : [normal_dmII_pattern]})
     # Parser input and make predictions
+    if 'prediction_results' not in st.session_state:
+        st.session_state.prediction_results = None
     predict_button = st.button('Predict')
     if predict_button:
-        predictions = parser_user_input(dataframe_input , reg_model , clf_model)
+        with st.spinner("Making predictions..."):
+            try:
+                predictions = parser_user_input(dataframe_input, reg_model, clf_model)
+                st.session_state.prediction_results = predictions
+            except Exception as e:
+                st.error(f"Prediction failed: {str(e)}")
