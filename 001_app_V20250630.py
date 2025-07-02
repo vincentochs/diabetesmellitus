@@ -3,7 +3,6 @@
 Created on Sun Jan 26 21:31:05 2025
 
 @author: Vincent Ochs
-
 This script is used for generating an app for regression and classification
 task
 """
@@ -148,7 +147,7 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
     dm_probabilities = df_final[dm_prob_columns].iloc[0].values
     
     # Calculate y-axis domain based on actual data ranges with reasonable BMI floor
-    bmi_min = max(np.min(ci_lower_values) * 0.5, 15)  # Don't go below BMI 15
+    bmi_min = max(np.min(ci_lower_values) * 0.5, 10)  # Don't go below BMI 15
     bmi_max = np.max(ci_upper_values) * 1.05
     
     # Pre-calculate all smooth curves for animation
@@ -494,7 +493,47 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
         if predictions:
             predictions_df_2 = pd.concat(predictions, ignore_index=True)
             predicted_values = reg_model.predict(predictions_df_2)
-    
+            
+            # Hard code adjustment deppending of patients information
+            
+            
+            print(f"Adjustment of BMI for column {target_columns[counter]}")
+            print(f"Original probs: {predicted_values}")
+            # Preoperative BMI highger
+            predicted_values = np.select(condlist = [predictions_df['BMI(t)'] >= 30],
+                                         choicelist = [predicted_values + 5.0],
+                                         default = predicted_values)
+            predicted_values = np.array([predicted_values[0]])
+            print(f"BMI changed by BMI pre: {predicted_values}")
+            # Hypertension reduces remission odds
+            predicted_values = np.select(condlist = [predictions_df_2['DMII_preoperative'].values[0] == 1],
+                                         choicelist = [predicted_values[0] + 4.0],
+                                         default = predicted_values)
+            predicted_values = np.array([predicted_values[0]])
+            print(f"BMI changed by Diabettes: {predicted_values}")
+            # Remission odds decline especially >50–60 years of age.
+            predicted_values = np.select(condlist = [predictions_df_2['age_years'] <= 40,
+                                                     (predictions_df_2['age_years'] > 40)&(predictions_df_2['age_years'] <= 50),
+                                                     predictions_df_2['age_years'] > 60],
+                                         choicelist = [predicted_values[0] - 3.5,
+                                                       predicted_values[0] - 2.5,
+                                                       predicted_values[0] + 3.5],
+                                         default = predicted_values)
+            predicted_values = np.array([predicted_values[0]])
+            print(f"BMI changed by age: {predicted_values}")
+            # Hypertension reduces remission odds
+            predicted_values = np.select(condlist = [predictions_df_2['hypertension'].values[0] == 1],
+                                         choicelist = [predicted_values[0] + 2.0],
+                                         default = predicted_values)
+            predicted_values = np.array([predicted_values[0]])
+            print(f"BMI changed by Hypertension: {predicted_values}")
+            # Surgery Type
+            predicted_values = np.select(condlist = [predictions_df_2['surgery'].values[0] == 2], #LRYGB helps to reduce DM odds
+                                         choicelist = [predicted_values[0] - 3.5],
+                                         default = predicted_values)
+            predicted_values = np.array([predicted_values[0]])
+            print(f"BMI changed by Surgery Type: {predicted_values}")
+            
             # Update the DataFrame with predictions
             for (row_index, target_column), prediction in zip(rows_to_update, predicted_values):
                 df_classification.at[row_index, target_column] = prediction
@@ -593,8 +632,12 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
             # Remission odds decline especially >50–60 years of age.
             print(f"Adjustment of DM likelihood for column {probas_columns[counter]}")
             print(f"Original probs: {predicted_probas}")
-            predicted_probas = np.select(condlist = [(predictions_df['age_years'] > 50)&(predictions_df['age_years'] < 60)],
-                                         choicelist = [np.max([predicted_probas - 0.02 , [0]])],
+            predicted_probas = np.select(condlist = [predictions_df['age_years'] <= 40,
+                                                     (predictions_df['age_years'] > 40)&(predictions_df['age_years'] <= 50),
+                                                     predictions_df['age_years'] > 60],
+                                         choicelist = [np.max([predicted_probas - 0.05 , [0]]),
+                                                       np.max([predicted_probas - 0.025 , [0]]),
+                                                       np.min([predicted_probas + 0.05 , [1]])],
                                          default = predicted_probas)
             print(f"Probas changed by age: {predicted_probas}")
             # BMI threshold impact (lower BMI = better remission odds)
@@ -618,14 +661,14 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
             print(f"Probas changed by BMI: {predicted_probas}")
             # Hypertension reduces remission odds
             predicted_probas = np.select(condlist = [predictions_df['hypertension'].values[0] == 1],
-                                         choicelist = [np.min([predicted_probas + 0.03 , [1]])],
+                                         choicelist = [np.min([predicted_probas + 0.175 , [1]])],
                                          default = predicted_probas)
             print(f"Probas changed by Hypertension: {predicted_probas}")
             # Surgery Type
             predicted_probas = np.select(condlist = [predictions_df['surgery'].values[0] == 2], #LRYGB helps to reduce DM odds
                                          choicelist = [np.max([predicted_probas - 0.05 , [0]])],
                                          default = predicted_probas)
-            print(f"Probas changed by Syrgery Type: {predicted_probas}")
+            print(f"Probas changed by Surgery Type: {predicted_probas}")
             
             # Re compute DM class due odds changes
             print(f"Original class: {predicted_values}")
