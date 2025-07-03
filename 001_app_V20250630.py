@@ -149,7 +149,7 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
     
     # Calculate y-axis domain based on actual data ranges with reasonable BMI floor
     bmi_min = max(np.min(ci_lower_values) * 0.5, 10)  # Don't go below BMI 15
-    bmi_max = np.max(ci_upper_values) * 1.8
+    bmi_max = np.max(ci_upper_values) * 1.05
     
     # Pre-calculate all smooth curves for animation
     total_steps = 100
@@ -495,12 +495,20 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
             predictions_df_2 = pd.concat(predictions, ignore_index=True)
             predicted_values = reg_model.predict(predictions_df_2)
             
-            # Hard code adjustment deppending of patients information only for certain time steps
+            # Hard code adjustment deppending of patients information
+            
+            
             print(f"Adjustment of BMI for column {target_columns[counter]}")
             print(f"Original probs: {predicted_values}")
+            # Preoperative BMI highger
+            predicted_values = np.select(condlist = [predictions_df['BMI(t)'] >= 30],
+                                         choicelist = [predicted_values + 5.0],
+                                         default = predicted_values)
+            predicted_values = np.array([predicted_values[0]])
+            print(f"BMI changed by BMI pre: {predicted_values}")
             # Hypertension reduces remission odds
             predicted_values = np.select(condlist = [predictions_df_2['DMII_preoperative'].values[0] == 1],
-                                         choicelist = [predicted_values[0] * 1.25],
+                                         choicelist = [predicted_values[0] + 4.0],
                                          default = predicted_values)
             predicted_values = np.array([predicted_values[0]])
             print(f"BMI changed by Diabettes: {predicted_values}")
@@ -508,21 +516,21 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
             predicted_values = np.select(condlist = [predictions_df_2['age_years'] <= 40,
                                                      (predictions_df_2['age_years'] > 40)&(predictions_df_2['age_years'] <= 50),
                                                      predictions_df_2['age_years'] > 60],
-                                         choicelist = [predicted_values[0] * 0.85,
-                                                       predicted_values[0] * 0.95,
-                                                       predicted_values[0] * 1.20],
+                                         choicelist = [predicted_values[0] - 3.5,
+                                                       predicted_values[0] - 2.5,
+                                                       predicted_values[0] + 3.5],
                                          default = predicted_values)
             predicted_values = np.array([predicted_values[0]])
             print(f"BMI changed by age: {predicted_values}")
             # Hypertension reduces remission odds
             predicted_values = np.select(condlist = [predictions_df_2['hypertension'].values[0] == 1],
-                                         choicelist = [predicted_values[0] * 1.30],
+                                         choicelist = [predicted_values[0] + 2.0],
                                          default = predicted_values)
             predicted_values = np.array([predicted_values[0]])
             print(f"BMI changed by Hypertension: {predicted_values}")
             # Surgery Type
             predicted_values = np.select(condlist = [predictions_df_2['surgery'].values[0] == 2], #LRYGB helps to reduce DM odds
-                                         choicelist = [predicted_values[0] * 0.85],
+                                         choicelist = [predicted_values[0] - 3.5],
                                          default = predicted_values)
             predicted_values = np.array([predicted_values[0]])
             print(f"BMI changed by Surgery Type: {predicted_values}")
