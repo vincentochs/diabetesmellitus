@@ -2,7 +2,7 @@
 """
 Created on Sun Jan 26 21:31:05 2025
 
-@author: Vincent Ochs
+@author: Vincent Ochs 
 
 This script is used for generating an app for regression and classification
 task
@@ -583,12 +583,23 @@ if selected == 'Prediction':
     #antidiab_drug_preop_Oral_anticogulation = int(st.sidebar.checkbox('Antidiabetes drug preoperative oral anticogulation'))
     #antidiab_drug_preop_Insulin = int(st.sidebar.checkbox('Antidiabetes drug preoperative insulin'))
     #prior_abdominal_surgery = int(st.sidebar.checkbox('Prior abdominal surgery'))
-    #osas_preoperative = int(st.sidebar.checkbox('Obstructive Sleep Apnea Syndrome (OSAS)'))
-    #antidiab_drug_preop_no_therapy = int(st.sidebar.checkbox('Antidiabetes drug preoperative - No Therapy'))
-    #antidiab_drug_preop_glp1_analogen = int(st.sidebar.checkbox('Antidiabetes drug preoperative - GLP1 Analogen'))
-    #comorbid_1_Myocardial_infarct = int(st.sidebar.checkbox('Myocardial Infarct'))
-    #comorbid_2_heart_failure = int(st.sidebar.checkbox('Heart Failure'))
-    #comorbid_6_pulmonary_disease = int(st.sidebar.checkbox('Pulmonary Disease'))
+    osas_preoperative = int(st.sidebar.checkbox('Obstructive Sleep Apnea Syndrome (OSAS)'))
+    if DMII_preoperative == 1:
+        antidiab_drug_preop_no_therapy = int(st.sidebar.checkbox('Antidiabetes drug preoperative - No Therapy'))
+        antidiab_drug_preop_glp1_analogen = int(st.sidebar.checkbox('Antidiabetes drug preoperative - GLP1 Analogen'))
+        antidiab_drug_preop_Oral_anticogulation = int(st.sidebar.checkbox('Antidiabetes drug preoperative - Oral Anticogulation'))
+        antidiab_drug_preop_Insulin = int(st.sidebar.checkbox('Antidiabetes drug preoperative - Insulin'))
+    else:
+        antidiab_drug_preop_no_therapy = 0
+        antidiab_drug_preop_glp1_analogen = 0
+        antidiab_drug_preop_Oral_anticogulation = 0
+        antidiab_drug_preop_Insulin = 0
+        
+        
+        
+        #comorbid_1_Myocardial_infarct = int(st.sidebar.checkbox('Myocardial Infarct'))
+        #comorbid_2_heart_failure = int(st.sidebar.checkbox('Heart Failure'))
+        #comorbid_6_pulmonary_disease = int(st.sidebar.checkbox('Pulmonary Disease'))
     #normal_dmII_pattern = int(st.sidebar.checkbox('Normal Diabetes Mellitus Type 2 pattern'))
     
     # Surgery Type
@@ -611,7 +622,12 @@ if selected == 'Prediction':
                                     'hypertension' : [hypertension],
                                     'hyperlipidemia' : [hyperlipidemia],
                                     'DMII_preoperative' : [DMII_preoperative],
-                                    'surgery' : [surgery]})
+                                    'surgery' : [surgery],
+                                    'antidiab_drug_preop_Oral_anticogulation' : [antidiab_drug_preop_Oral_anticogulation],
+                                    'antidiab_drug_preop_Insulin' : [antidiab_drug_preop_Insulin],
+                                    'antidiab_drug_preop_no_therapy' : [antidiab_drug_preop_no_therapy],
+                                    'antidiab_drug_preop_glp1_analogen' : [antidiab_drug_preop_glp1_analogen],
+                                    'osas_preoperative' : [osas_preoperative]})
     # Parser input and make predictions
     if 'prediction_results' not in st.session_state:
         st.session_state.prediction_results = None
