@@ -55,7 +55,8 @@ dictionary_categorical_features = {'sex (1 = female, 2=male)' : {'Male' : 2,
                                    'osas_preoperative' : {'Yes' : 1,
                                                           'No' : 0},
                                    'surgery' : {'Laparoscopic Sleeve Gastrectomy (LSG)' : 1,
-                                                'Laparoscopic Roux-en-Y Gastric Bypass (LRYGB)' : 2},
+                                                'Laparoscopic Roux-en-Y Gastric Bypass (LRYGB)' : 2,
+                                                'OAGB' : 3},
                                    
                                    'normal_dmII_pattern' : {'Yes' : 1,
                                                             'No' : 0},
@@ -223,6 +224,8 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                                              'Line' : ['Threshold BMI'] * len(current_smooth_years)})
 
         # Create Altair charts
+        # For the bmi_chart, you can use:
+
         bmi_chart = alt.Chart(current_bmi_chart_data).mark_line(
             strokeWidth=3  # Change size of Predicted BMI line
         ).encode(
@@ -236,7 +239,11 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                 ),
                 legend=alt.Legend(title="Legend")
             ),
-            tooltip=["Year", "BMI"]
+            tooltip=[
+                alt.Tooltip("Year:Q", title="Months After Surgery"),
+                alt.Tooltip("BMI:Q", title="BMI", format=".1f"),
+                alt.Tooltip("Line:N", title="Type")
+            ]
         )
 
         bounds_chart = alt.Chart(current_chart_data).mark_line(
@@ -253,7 +260,7 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                 ),
                 legend=None
             ),
-            tooltip=["Year", "BMI"]
+            tooltip=["Year:Q", "BMI:Q", "Line:N"]
         )
 
         healthy_line_chart = alt.Chart(healthy_bmi_line[:i]).mark_line(
@@ -269,7 +276,7 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                 ),
                 legend=None
             ),
-            tooltip=["Year", "BMI"]
+            tooltip=["Year:Q", "BMI:Q", "Line:N"]
         )
             
            
@@ -307,8 +314,15 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
         chart_placeholder.altair_chart(final_chart)
         
         # Display current DM probability below the chart
-        prob_status = "High Risk" if current_dm_probability > 0.5 else "Low Risk"
-        prob_color = "red" if current_dm_probability > 0.5 else "green"
+        if current_dm_probability > 0.8:
+            prob_status = "High Risk"
+            prob_color = "red"
+        elif current_dm_probability > 0.5:
+            prob_status = "Middle Risk"
+            prob_color = "orange"
+        else:
+            prob_status = "Low Risk"
+            prob_color = "green"
         
         # Convert months to a more readable format
         if current_time_months == 0:
@@ -323,20 +337,20 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
         
         time.sleep(0.0001)  # Animation delay
     
-    # Only render the risk advise if the patient has preoperatibe Diabettes Mellitus Type 2
-    if df_final['DMII_preoperative'].values[0] == 1:
-        prob_placeholder.markdown(f"""
-        <div style="text-align: center; padding: 20px; background-color: #f0f2f6; border-radius: 10px; margin: 10px 0;">
-            <h3 style="margin: 0; color: #333;">Current Diabetes Risk Assessment</h3>
-            <p style="font-size: 18px; margin: 10px 0; color: #666;">Time Point: <strong>{time_label}</strong></p>
-            <p style="font-size: 24px; margin: 10px 0; color: {prob_color}; font-weight: bold;">
-                Diabetes Probability: {current_dm_probability:.1%}
-            </p>
-            <p style="font-size: 20px; margin: 0; color: {prob_color}; font-weight: bold;">
-                Risk Level: {prob_status}
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        # Only render the risk advise if the patient has preoperatibe Diabettes Mellitus Type 2
+        if df_final['DMII_preoperative'].values[0] == 1:
+            prob_placeholder.markdown(f"""
+            <div style="text-align: center; padding: 20px; background-color: #f0f2f6; border-radius: 10px; margin: 10px 0;">
+                <h3 style="margin: 0; color: #333;">Current Diabetes Risk Assessment</h3>
+                <p style="font-size: 18px; margin: 10px 0; color: #666;">Time Point: <strong>{time_label}</strong></p>
+                <p style="font-size: 24px; margin: 10px 0; color: {prob_color}; font-weight: bold;">
+                    Diabetes Probability: {current_dm_probability:.1%}
+                </p>
+                <p style="font-size: 20px; margin: 0; color: {prob_color}; font-weight: bold;">
+                    Risk Level: {prob_status}
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
 ###############################################################################
 def find_bmi_thresholds_speed(clf_model, df_final, time_points=['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y']):
@@ -538,6 +552,19 @@ if selected == 'Home':
     \n
     **Disclaimer:** This application and its results are only approved for research purposes.
     """)
+    # Sponsor Images
+    images = [r'images/collaborators.png']
+    
+    st.markdown("---")
+    st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
+    # columns for center images
+    column_1 , column_2 = st.columns(2 , gap = 'small')
+    with column_2:
+        st.markdown("#")
+    with column_1:
+        st.image(images[0] , width = 900)
+    
+    
 ###############################################################################
 # Prediction page layout
 if selected == 'Prediction':
@@ -639,3 +666,14 @@ if selected == 'Prediction':
                 st.session_state.prediction_results = predictions
             except Exception as e:
                 st.error(f"Prediction failed: {str(e)}")
+    # Sponsor Images
+    images = [r'images/collaborators.png']
+    
+    st.markdown("---")
+    st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
+    # columns for center images
+    column_1 , column_2 = st.columns(2 , gap = 'small')
+    with column_2:
+        st.markdown("#")
+    with column_1:
+        st.image(images[0] , width = 900)
