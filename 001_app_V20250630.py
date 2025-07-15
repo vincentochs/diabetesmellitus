@@ -2,7 +2,7 @@
 """
 Created on Sun Jan 26 21:31:05 2025
 
-@author: Vincent Ochs 
+@author: Vincent Ochs
 
 This script is used for generating an app for regression and classification
 task
@@ -351,6 +351,58 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                 </p>
             </div>
             """, unsafe_allow_html=True)
+        
+    # Cards for the full information
+    if df_final['DMII_preoperative'].values[0] == 1:
+        st.subheader("Diabetes Risk and BMI at Key Time Points")
+        
+        # Define time points and their corresponding indices
+        time_points_display = [
+            (0, "Pre-operative", "BMI before surgery", "DMII_preoperative_prob"),
+            (3, "3 months", "bmi3", "dm3m_prob"),
+            (6, "6 months", "bmi6", "dm6m_prob"),
+            (12, "12 months", "bmi12", "dm12m_prob"),
+            (18, "18 months", "bmi18", "dm18m_prob"),
+            (24, "2 years", "bmi2y", "dm2y_prob"),
+            (36, "3 years", "bmi3y", "dm3y_prob"),
+            (48, "4 years", "bmi4y", "dm4y_prob"),
+            (60, "5 years", "bmi5y", "dm5y_prob")
+        ]
+        
+        # Create columns for better layout
+        cols = st.columns(3)
+        
+        for idx, (months, time_label, bmi_col, prob_col) in enumerate(time_points_display):
+            col_idx = idx % 3
+            
+            current_bmi = df_final[bmi_col].values[0]
+            current_dm_probability = df_final[prob_col].values[0]
+            
+            if current_dm_probability > 0.8:
+                prob_status = "High Risk"
+                prob_color = "red"
+            elif current_dm_probability > 0.5:
+                prob_status = "Middle Risk"
+                prob_color = "orange"
+            else:
+                prob_status = "Low Risk"
+                prob_color = "green"
+            
+            with cols[col_idx]:
+                st.markdown(f"""
+                <div style="text-align: center; padding: 15px; background-color: #f0f2f6; border-radius: 10px; margin: 10px 0;">
+                    <h4 style="margin: 0; color: #333;">{time_label}</h4>
+                    <p style="font-size: 16px; margin: 5px 0; color: #666;">
+                        <strong>BMI: {current_bmi:.1f}</strong>
+                    </p>
+                    <p style="font-size: 16px; margin: 5px 0; color: {prob_color}; font-weight: bold;">
+                        DM Risk: {current_dm_probability:.1%}
+                    </p>
+                    <p style="font-size: 14px; margin: 0; color: {prob_color}; font-weight: bold;">
+                        {prob_status}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
 
 ###############################################################################
 def find_bmi_thresholds_speed(clf_model, df_final, time_points=['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y']):
