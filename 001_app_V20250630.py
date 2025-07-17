@@ -14,6 +14,7 @@ task
 # App
 import streamlit as st
 from streamlit_option_menu import option_menu
+from streamlit_carousel import carousel
 import altair as alt
 
 # Utils
@@ -56,7 +57,7 @@ dictionary_categorical_features = {'sex (1 = female, 2=male)' : {'Male' : 2,
                                                           'No' : 0},
                                    'surgery' : {'Laparoscopic Sleeve Gastrectomy (LSG)' : 1,
                                                 'Laparoscopic Roux-en-Y Gastric Bypass (LRYGB)' : 2,
-                                                'OAGB' : 3},
+                                                'OAGB' : 5},
                                    
                                    'normal_dmII_pattern' : {'Yes' : 1,
                                                             'No' : 0},
@@ -605,18 +606,84 @@ if selected == 'Home':
     **Disclaimer:** This application and its results are only approved for research purposes.
     """)
     # Sponsor Images
-    images = [r'images/collaborators.png']
+    images = [r'images/basel.png',
+              r'images/basel_university.jpeg',
+              r'images/claraspital.png',
+              r'images/gzo_hospital.png',
+              r'images/linkoping_university.png',
+              r'images/marmara_university.png',
+              r'images/nova_medical_school.png',
+              r'images/thurgau_spital.jpg',
+              r'images/tiroler.png',
+              r'images/umm.png',
+              r'images/warsaw_medical_university.png',
+              r'images/wuzburg.png']
     
     st.markdown("---")
     st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
-    # columns for center images
-    column_1 , column_2 = st.columns(2 , gap = 'small')
-    with column_2:
-        st.markdown("#")
-    with column_1:
-        st.image(images[0] , width = 900)
-    
-    
+    partner_logos = [
+    {
+        "title": "",
+        "text": "",
+        "img": images[0]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[1]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[2]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[3]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[4]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[5]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[6]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[7]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[8]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[9]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[10]
+    },
+    {
+        "title": "",
+        "text" : "",
+        "img": images[11]
+    }]
+    carousel(items=partner_logos, width=0.25)
+
 ###############################################################################
 # Prediction page layout
 if selected == 'Prediction':
@@ -657,17 +724,17 @@ if selected == 'Prediction':
     st.sidebar.subheader("Medical Conditions (Yes/No):")
     hypertension = int(st.sidebar.checkbox("Hypertension"))
     hyperlipidemia = int(st.sidebar.checkbox('Hyperlipidemia'))
+    osas_preoperative = int(st.sidebar.checkbox('Obstructive Sleep Apnea Syndrome (OSAS)'))
     #depression = int(st.sidebar.checkbox('Depression'))
     DMII_preoperative = int(st.sidebar.checkbox('Diabetes Mellitus Type 2'))
     #antidiab_drug_preop_Oral_anticogulation = int(st.sidebar.checkbox('Antidiabetes drug preoperative oral anticogulation'))
     #antidiab_drug_preop_Insulin = int(st.sidebar.checkbox('Antidiabetes drug preoperative insulin'))
     #prior_abdominal_surgery = int(st.sidebar.checkbox('Prior abdominal surgery'))
-    osas_preoperative = int(st.sidebar.checkbox('Obstructive Sleep Apnea Syndrome (OSAS)'))
     if DMII_preoperative == 1:
-        antidiab_drug_preop_no_therapy = int(st.sidebar.checkbox('Antidiabetes drug preoperative - No Therapy'))
-        antidiab_drug_preop_glp1_analogen = int(st.sidebar.checkbox('Antidiabetes drug preoperative - GLP1 Analogen'))
-        antidiab_drug_preop_Oral_anticogulation = int(st.sidebar.checkbox('Antidiabetes drug preoperative - Oral Anticogulation'))
-        antidiab_drug_preop_Insulin = int(st.sidebar.checkbox('Antidiabetes drug preoperative - Insulin'))
+        antidiab_drug_preop_no_therapy = int(st.sidebar.checkbox('No Therapy'))
+        antidiab_drug_preop_glp1_analogen = int(st.sidebar.checkbox('Antidiabetic Drug GLP1 Analogen'))
+        antidiab_drug_preop_Oral_anticogulation = int(st.sidebar.checkbox('Oral Antidiabetic Drug'))
+        antidiab_drug_preop_Insulin = int(st.sidebar.checkbox('Antidiabetic Drug Insulin'))
     else:
         antidiab_drug_preop_no_therapy = 0
         antidiab_drug_preop_glp1_analogen = 0
@@ -718,14 +785,84 @@ if selected == 'Prediction':
                 st.session_state.prediction_results = predictions
             except Exception as e:
                 st.error(f"Prediction failed: {str(e)}")
-    # Sponsor Images
-    images = [r'images/collaborators.png']
-    
-    st.markdown("---")
-    st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
-    # columns for center images
-    column_1 , column_2 = st.columns(2 , gap = 'small')
-    with column_2:
-        st.markdown("#")
-    with column_1:
-        st.image(images[0] , width = 900)
+        # Sponsor Images
+        images = [r'images/collaborators.png']
+        
+        # Sponsor Images
+        images = [r'images/basel.png',
+                  r'images/basel_university.jpeg',
+                  r'images/claraspital.png',
+                  r'images/gzo_hospital.png',
+                  r'images/linkoping_university.png',
+                  r'images/marmara_university.png',
+                  r'images/nova_medical_school.png',
+                  r'images/thurgau_spital.jpg',
+                  r'images/tiroler.png',
+                  r'images/umm.png',
+                  r'images/warsaw_medical_university.png',
+                  r'images/wuzburg.png']
+        
+        st.markdown("---")
+        st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
+        partner_logos = [
+        {
+            "title": "",
+            "text": "",
+            "img": images[0]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[1]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[2]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[3]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[4]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[5]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[6]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[7]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[8]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[9]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[10]
+        },
+        {
+            "title": "",
+            "text" : "",
+            "img": images[11]
+        }]
+        carousel(items=partner_logos, width=0.25)
