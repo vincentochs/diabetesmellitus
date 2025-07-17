@@ -4,7 +4,7 @@ pandas==1.5.3
 scikit_learn==1.4.2
 streamlit==1.36.0
 streamlit_option_menu==0.3.6
+streamlit_carousel==1.1.2
 altair==5.2.0
 seaborn
 xgboost==2.0.3
-imblearn
