@@ -496,7 +496,6 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
     for i in dictionary_categorical_features.keys():
         if i in dataframe_input.columns:
             dataframe_input[i] = dataframe_input[i].map(dictionary_categorical_features[i])
-    
     predictions_df_regression = pd.DataFrame(reg_model.predict(dataframe_input[reg_model.feature_names_in_.tolist()]))
     predictions_df_regression.columns = ['bmi3','bmi6','bmi12','bmi18','bmi2y','bmi3y','bmi4y','bmi5y']
     print(f"Regression df: {predictions_df_regression}")
@@ -505,146 +504,6 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
     # Classification part
     df_classification = pd.concat([dataframe_input,
                                    predictions_df_regression] , axis = 1)
-    
-    predictions_df_classification = pd.DataFrame(clf_model.predict(df_classification[clf_model.feature_names_in_.tolist()]))
-    predictions_df_classification.columns = ['dm3m','dm6m','dm12m','dm18m','dm2y','dm3y' , 'dm4y','dm5y']
-    print(f"Classification df: {predictions_df_classification}")
-    _x = clf_model.predict_proba(df_classification[clf_model.feature_names_in_.tolist()])
-    _x = [value[0][1] for value in _x]
-    probas_df_classification = pd.DataFrame([_x])
-    probas_df_classification.columns = ['dm3m_prob','dm6m_prob','dm12m_prob','dm18m_prob','dm2y_prob', 'dm3y_prob','dm4y_prob','dm5y_prob']
-    print(f"Classification probas df: {probas_df_classification}")
-    
-    df_final = pd.concat([df_classification,
-                          predictions_df_classification,
-                          probas_df_classification] , axis = 1)
-    df_final['DMII_preoperative_prob'] = df_final['DMII_preoperative'].astype(float)
-    
-    ###########################################################################
-    # BMI-based DM probability adjustment based on thresholds from the image
-    
-    # Define BMI thresholds for diabetes remission based on the image
-    bmi_thresholds = {
-        'preop_to_3m': {'bmi_col': 'bmi3', 'prob_col': 'dm3m_prob', 'threshold': 35.0},
-        '3m_to_6m': {'bmi_col': 'bmi6', 'prob_col': 'dm6m_prob', 'threshold': 32.0},
-        '6m_to_12m': {'bmi_col': 'bmi12', 'prob_col': 'dm12m_prob', 'threshold': 30.0},
-        '12m_to_18m': {'bmi_col': 'bmi18', 'prob_col': 'dm18m_prob', 'threshold': 28.0},
-        '18m_to_2y': {'bmi_col': 'bmi2y', 'prob_col': 'dm2y_prob', 'threshold': 27.0},
-        '2y_to_3y': {'bmi_col': 'bmi3y', 'prob_col': 'dm3y_prob', 'threshold': 26.0},
-        '3y_to_4y': {'bmi_col': 'bmi4y', 'prob_col': 'dm4y_prob', 'threshold': 25.0},
-        '4y_to_5y': {'bmi_col': 'bmi5y', 'prob_col': 'dm5y_prob', 'threshold': 25.0}
-    }
-    
-    # Only apply BMI-based adjustments if patient has preoperative diabetes
-    if df_final['DMII_preoperative'].iloc[0] == 1:
-        
-        # Function to calculate adjusted probability based on BMI threshold
-        def adjust_probability_by_bmi(current_bmi, current_prob, threshold_bmi, adjustment_factor=0.35):
-            """
-            Adjust DM probability based on BMI relative to threshold
-            
-            Parameters:
-            - current_bmi: Current BMI value
-            - current_prob: Current DM probability
-            - threshold_bmi: BMI threshold for remission
-            - adjustment_factor: How much to adjust probability (0.3 = 30% reduction/increase)
-            """
-            if current_bmi <= threshold_bmi:
-                # BMI is below threshold - higher chance of remission (lower DM probability)
-                bmi_difference = threshold_bmi - current_bmi
-                # The more below the threshold, the greater the reduction
-                reduction_factor = min(adjustment_factor * (1 + bmi_difference / 10), 0.8)
-                adjusted_prob = current_prob * (1 - reduction_factor)
-            else:
-                # BMI is above threshold - lower chance of remission (higher DM probability)
-                bmi_difference = current_bmi - threshold_bmi
-                # The more above the threshold, the smaller the reduction (or even increase)
-                increase_factor = min(adjustment_factor * (bmi_difference / 10), 0.5)
-                adjusted_prob = current_prob * (1 + increase_factor)
-            
-            # Ensure probability stays within [0, 1] bounds
-            return max(0.0, min(1.0, adjusted_prob))
-        
-        # Apply BMI-based adjustments to each time step
-        for time_step, threshold_info in bmi_thresholds.items():
-            bmi_col = threshold_info['bmi_col']
-            prob_col = threshold_info['prob_col']
-            threshold = threshold_info['threshold']
-            
-            current_bmi = df_final[bmi_col].iloc[0]
-            current_prob = df_final[prob_col].iloc[0]
-            
-            # Calculate adjusted probability
-            adjusted_prob = adjust_probability_by_bmi(current_bmi, current_prob, threshold)
-            
-            # Update the probability in the dataframe
-            df_final[prob_col] = adjusted_prob
-            
-            # Also update the binary prediction based on adjusted probability
-            binary_col = prob_col.replace('_prob', '')
-            df_final[binary_col] = 1 if adjusted_prob > 0.5 else 0
-            
-            print(f"Time step {time_step}: BMI={current_bmi:.1f}, Threshold={threshold}, "
-                  f"Original prob={current_prob:.3f}, Adjusted prob={adjusted_prob:.3f}")
-    
-    ###########################################################################
-    # Confidence interval calculation (existing code)
-    
-    # Add confidence intervals (95% confidence level)
-    confidence_level = 0.90
-    z_score = 1.67  # 99% confidence level
-
-    # Calculate confidence intervals for BMI predictions
-    bmi_columns = ['BMI before surgery', 'bmi3', 'bmi6', 'bmi12', 'bmi18', 'bmi2y', 'bmi3y', 'bmi4y', 'bmi5y']
-    
-    # Initialize confidence interval columns
-    for col in bmi_columns:
-        df_final[f'{col}_ci_lower'] = df_final[col]
-        df_final[f'{col}_ci_upper'] = df_final[col]
-        
-        if col != 'BMI before surgery':  # Skip the initial BMI which is known
-            std_error = df_final[col].std() if not pd.isna(df_final[col].std()) else df_final[col].mean() * 0.1
-            df_final[f'{col}_ci_lower'] = df_final[col] - training_mae
-            df_final[f'{col}_ci_upper'] = df_final[col] + training_mae
-    
-    # Create a summary dataframe for display
-    summary_df = pd.DataFrame({
-        'Time': ['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y', '5y'],
-        'BMI': df_final[bmi_columns].iloc[0].values,
-        'BMI CI Lower': df_final[[f'{col}_ci_lower' for col in bmi_columns]].iloc[0].values,
-        'BMI CI Upper': df_final[[f'{col}_ci_upper' for col in bmi_columns]].iloc[0].values,
-        'DM Status': df_final[['DMII_preoperative', 'dm3m', 'dm6m', 'dm12m', 'dm18m', 'dm2y', 'dm3y', 'dm4y', 'dm5y']].iloc[0].values,
-        'DM Likelihood (%)': (df_final[['DMII_preoperative_prob', 'dm3m_prob', 'dm6m_prob', 'dm12m_prob', 'dm18m_prob', 'dm2y_prob', 'dm3y_prob', 'dm4y_prob', 'dm5y_prob']].iloc[0].values * 100).round(2)
-    })
-    
-    summary_df['DM Status'] = np.select(condlist = [summary_df[ 'DM Status'] == 1],
-                                        choicelist = ['Diabetes'],
-                                        default = 'Healed')  
-    
-    # Create the chart with thresholds
-    chart = create_animated_evolution_chart(df_final, clf_model, predictions_df_regression)
-    
-    return df_final
-
-# Parser input information
-def parser_user_input(dataframe_input , reg_model , clf_model):
-    ##########################################################################
-    # Regression part
-    
-    # Encode categorical features
-    for i in dictionary_categorical_features.keys():
-        if i in dataframe_input.columns:
-            dataframe_input[i] = dataframe_input[i].map(dictionary_categorical_features[i])
-    
-    predictions_df_regression = pd.DataFrame(reg_model.predict(dataframe_input[reg_model.feature_names_in_.tolist()]))
-    predictions_df_regression.columns = ['bmi3','bmi6','bmi12','bmi18','bmi2y','bmi3y','bmi4y','bmi5y']
-    print(f"Regression df: {predictions_df_regression}")
-   
-    ###########################################################################
-    # Classification part
-    df_classification = pd.concat([dataframe_input,
-                                   predictions_df_regression] , axis = 1)
-    
     predictions_df_classification = pd.DataFrame(clf_model.predict(df_classification[clf_model.feature_names_in_.tolist()]))
     predictions_df_classification.columns = ['dm3m','dm6m','dm12m','dm18m','dm2y','dm3y' , 'dm4y','dm5y']
     print(f"Classification df: {predictions_df_classification}")
@@ -678,78 +537,213 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
     if df_final['DMII_preoperative'].iloc[0] == 1:
         
         # Function to calculate adjusted probability based on BMI change
-        def adjust_probability_by_bmi_change(bmi_change, current_prob, base_adjustment=0.05):
+        def adjust_probability_by_bmi_change_enhanced(bmi_change, current_prob, current_bmi, surgery_type, 
+                                                  time_step, medications, base_adjustment=0.05):
             """
-            Adjust DM probability based on BMI change from previous time step
+            Enhanced function to adjust DM probability based on BMI change, surgery type, and medications
             
             Parameters:
             - bmi_change: Change in BMI (negative = reduction, positive = increase)
             - current_prob: Current DM probability
+            - current_bmi: Current BMI value
+            - surgery_type: Type of surgery (1=LSG, 2=LRYGB, 5=OAGB)
+            - time_step: Time step identifier
+            - medications: Dictionary with medication flags
             - base_adjustment: Base adjustment factor per BMI unit change
             """
-            # BMI reduction (negative change) = lower DM probability
-            # BMI increase (positive change) = higher DM probability
             
-            # Calculate adjustment factor based on BMI change
-            # More dramatic BMI changes have stronger effects
-            if bmi_change <= 0:  # BMI reduced or stayed same
-                # Greater BMI reduction = greater probability reduction
-                reduction_factor = abs(bmi_change) * base_adjustment
-                # Cap the reduction to prevent negative probabilities
-                reduction_factor = min(reduction_factor, 0.7)
-                adjusted_prob = current_prob * (1 - reduction_factor)
-            else:  # BMI increased
-                # BMI increase = probability increase
-                increase_factor = bmi_change * base_adjustment * 0.5  # Less aggressive than reduction
-                increase_factor = min(increase_factor, 0.3)
-                adjusted_prob = current_prob * (1 + increase_factor)
+            # Surgery-specific BMI thresholds based on your table
+            # Using the "Lite threshold BMI" values from your image
+            surgery_thresholds = {
+                # LSG (Laparoscopic Sleeve Gastrectomy) - surgery type 1
+                1: {
+                    '3m': 35.0,   # 3 months
+                    '6m': 32.0,   # 6 months  
+                    '12m': 30.0,  # 12 months
+                    '18m': 28.0,  # 18 months
+                    '2y': 27.0,   # 2 years
+                    '3y': 26.0,   # 3 years
+                    '4y': 25.0,   # 4 years
+                    '5y': 25.0    # 5 years
+                },
+                # LRYGB (Laparoscopic Roux-en-Y Gastric Bypass) - surgery type 2
+                2: {
+                    '3m': 33.0,   # Typically more aggressive weight loss
+                    '6m': 30.0,   
+                    '12m': 28.0,  
+                    '18m': 26.0,  
+                    '2y': 25.0,   
+                    '3y': 24.0,   
+                    '4y': 23.0,   
+                    '5y': 23.0    
+                },
+                # OAGB (One Anastomosis Gastric Bypass) - surgery type 5
+                5: {
+                    '3m': 34.0,   # Between LSG and LRYGB
+                    '6m': 31.0,   
+                    '12m': 29.0,  
+                    '18m': 27.0,  
+                    '2y': 26.0,   
+                    '3y': 25.0,   
+                    '4y': 24.0,   
+                    '5y': 24.0    
+                }
+            }
+            
+            # Time step mapping
+            time_step_map = {
+                'dm3m_prob': '3m',
+                'dm6m_prob': '6m', 
+                'dm12m_prob': '12m',
+                'dm18m_prob': '18m',
+                'dm2y_prob': '2y',
+                'dm3y_prob': '3y',
+                'dm4y_prob': '4y',
+                'dm5y_prob': '5y'
+            }
+            
+            # Get the appropriate threshold for this surgery and time step
+            surgery_key = surgery_type if surgery_type in surgery_thresholds else 1  # Default to LSG
+            time_key = time_step_map.get(time_step, '3m')  # Default to 3m if not found
+            threshold_bmi = surgery_thresholds[surgery_key].get(time_key, 30.0)  # Default threshold
+            
+            # Calculate BMI-based adjustment
+            if current_bmi <= threshold_bmi:
+                # BMI is below threshold - higher chance of remission (lower DM probability)
+                bmi_difference = threshold_bmi - current_bmi
+                # Surgery-specific effectiveness multiplier
+                if surgery_type == 2:  # LRYGB - most effective
+                    effectiveness_multiplier = 1.3
+                elif surgery_type == 5:  # OAGB - moderately effective  
+                    effectiveness_multiplier = 1.15
+                else:  # LSG - baseline effectiveness
+                    effectiveness_multiplier = 1.5
+                    
+                # The more below the threshold, the greater the reduction
+                reduction_factor = min(base_adjustment * (1 + bmi_difference / 10) * effectiveness_multiplier, 0.8)
+                bmi_adjusted_prob = current_prob * (1 - reduction_factor)
+            else:
+                # BMI is above threshold - lower chance of remission (higher DM probability)
+                bmi_difference = current_bmi - threshold_bmi
+                # The more above the threshold, the smaller the reduction (or even increase)
+                increase_factor = min(base_adjustment * (bmi_difference / 10), 0.3)
+                bmi_adjusted_prob = current_prob * (1 + increase_factor)
+            
+            # Apply medication effects (medications reduce DM probability)
+            medication_reduction = 0.0
+            
+            # GLP-1 analogs - strong effect on diabetes remission
+            if medications.get('antidiab_drug_preop_glp1_analogen', 0) == 1:
+                medication_reduction += 0.15  # 15% reduction
+            
+            # Oral antidiabetic drugs - moderate effect
+            if medications.get('antidiab_drug_preop_Oral_anticogulation', 0) == 1:
+                medication_reduction += 0.10  # 10% reduction
+                
+            # Insulin - indicates more severe diabetes, but still some protective effect
+            if medications.get('antidiab_drug_preop_Insulin', 0) == 1:
+                medication_reduction += 0.08  # 8% reduction
+            
+            # No therapy - no additional benefit
+            if medications.get('antidiab_drug_preop_no_therapy', 0) == 1:
+                medication_reduction += 0.0  # No additional reduction
+            
+            # Apply medication reduction
+            final_adjusted_prob = bmi_adjusted_prob * (1 - medication_reduction)
             
             # Ensure probability stays within [0, 1] bounds
-            return max(0.0, min(1.0, adjusted_prob))
+            final_adjusted_prob = max(0.0, min(1.0, final_adjusted_prob))
+            
+            return final_adjusted_prob
         
         # Apply BMI change-based adjustments to each time step
-        for transition in bmi_transitions:
-            prev_bmi_col = transition['prev_bmi']
-            current_bmi_col = transition['current_bmi']
-            prob_col = transition['prob_col']
+        def apply_enhanced_bmi_adjustments(df_final, clf_model):
+            """
+            Apply enhanced BMI adjustments with surgery-specific thresholds and medication effects
+            """
+            # Define BMI time step transitions
+            bmi_transitions = [
+                {'prev_bmi': 'BMI before surgery', 'current_bmi': 'bmi3', 'prob_col': 'dm3m_prob'},
+                {'prev_bmi': 'bmi3', 'current_bmi': 'bmi6', 'prob_col': 'dm6m_prob'},
+                {'prev_bmi': 'bmi6', 'current_bmi': 'bmi12', 'prob_col': 'dm12m_prob'},
+                {'prev_bmi': 'bmi12', 'current_bmi': 'bmi18', 'prob_col': 'dm18m_prob'},
+                {'prev_bmi': 'bmi18', 'current_bmi': 'bmi2y', 'prob_col': 'dm2y_prob'},
+                {'prev_bmi': 'bmi2y', 'current_bmi': 'bmi3y', 'prob_col': 'dm3y_prob'},
+                {'prev_bmi': 'bmi3y', 'current_bmi': 'bmi4y', 'prob_col': 'dm4y_prob'},
+                {'prev_bmi': 'bmi4y', 'current_bmi': 'bmi5y', 'prob_col': 'dm5y_prob'}
+            ]
             
-            prev_bmi = df_final[prev_bmi_col].iloc[0]
-            current_bmi = df_final[current_bmi_col].iloc[0]
-            current_prob = df_final[prob_col].iloc[0]
+            # Only apply BMI-based adjustments if patient has preoperative diabetes
+            if df_final['DMII_preoperative'].iloc[0] == 1:
+                
+                # Get surgery type and medications
+                surgery_type = df_final['surgery'].iloc[0]
+                medications = {
+                    'antidiab_drug_preop_glp1_analogen': df_final['antidiab_drug_preop_glp1_analogen'].iloc[0],
+                    'antidiab_drug_preop_Oral_anticogulation': df_final['antidiab_drug_preop_Oral_anticogulation'].iloc[0],
+                    'antidiab_drug_preop_Insulin': df_final['antidiab_drug_preop_Insulin'].iloc[0],
+                    'antidiab_drug_preop_no_therapy': df_final['antidiab_drug_preop_no_therapy'].iloc[0]
+                }
+                
+                # Apply enhanced BMI change-based adjustments to each time step
+                for transition in bmi_transitions:
+                    prev_bmi_col = transition['prev_bmi']
+                    current_bmi_col = transition['current_bmi']
+                    prob_col = transition['prob_col']
+                    
+                    prev_bmi = df_final[prev_bmi_col].iloc[0]
+                    current_bmi = df_final[current_bmi_col].iloc[0]
+                    current_prob = df_final[prob_col].iloc[0]
+                    
+                    # Calculate BMI change
+                    bmi_change = current_bmi - prev_bmi
+                    
+                    # Calculate adjusted probability using enhanced function
+                    adjusted_prob = adjust_probability_by_bmi_change_enhanced(
+                        bmi_change=bmi_change,
+                        current_prob=current_prob, 
+                        current_bmi=current_bmi,
+                        surgery_type=surgery_type,
+                        time_step=prob_col,
+                        medications=medications
+                    )
+                    
+                    # Apply comorbidity adjustments (hypertension and hyperlipidemia)
+                    comorbidity_factor = 1.0
+                    
+                    # Hypertension increases DM probability by 10-15%
+                    if df_final['hypertension'].iloc[0] == 1:
+                        comorbidity_factor *= 1.35
+                    
+                    # Hyperlipidemia increases DM probability by 8-12%
+                    if df_final['hyperlipidemia'].iloc[0] == 1:
+                        comorbidity_factor *= 1.20
+                    # OSAS increase DM probability by 10%
+                    if df_final['osas_preoperative'].iloc[0] == 1:
+                        comorbidity_factor *= 1.10
+                    
+                    # Apply comorbidity factor
+                    final_adjusted_prob = min(1.0, adjusted_prob * comorbidity_factor)
+                    
+                    # Update the probability in the dataframe
+                    df_final[prob_col] = final_adjusted_prob
+                    
+                    # Also update the binary prediction based on adjusted probability
+                    binary_col = prob_col.replace('_prob', '')
+                    df_final[binary_col] = 1 if final_adjusted_prob > 0.5 else 0
+                    
+                    # Get surgery name for logging
+                    surgery_names = {1: 'LSG', 2: 'LRYGB', 5: 'OAGB'}
+                    surgery_name = surgery_names.get(surgery_type, 'Unknown')
+                    
+                    print(f"Transition {prev_bmi_col} -> {current_bmi_col}: "
+                          f"Surgery={surgery_name}, BMI={current_bmi:.1f}, BMI change={bmi_change:.1f}, "
+                          f"Original prob={current_prob:.3f}, "
+                          f"Adjusted prob={adjusted_prob:.3f}, "
+                          f"Final prob (with comorbidities)={final_adjusted_prob:.3f}")
             
-            # Calculate BMI change
-            bmi_change = current_bmi - prev_bmi
-            
-            # Calculate adjusted probability based on BMI change
-            adjusted_prob = adjust_probability_by_bmi_change(bmi_change, current_prob)
-            
-            # Apply comorbidity adjustments (hypertension and hyperlipidemia)
-            # These conditions increase DM probability
-            comorbidity_factor = 1.0
-            
-            # Hypertension increases DM probability by 10-15%
-            if df_final['hypertension'].iloc[0] == 1:
-                comorbidity_factor *= 1.15
-            
-            # Hyperlipidemia increases DM probability by 8-12%
-            if df_final['hyperlipidemia'].iloc[0] == 1:
-                comorbidity_factor *= 1.10
-            
-            # Apply comorbidity factor
-            adjusted_prob = min(1.0, adjusted_prob * comorbidity_factor)
-            
-            # Update the probability in the dataframe
-            df_final[prob_col] = adjusted_prob
-            
-            # Also update the binary prediction based on adjusted probability
-            binary_col = prob_col.replace('_prob', '')
-            df_final[binary_col] = 1 if adjusted_prob > 0.5 else 0
-            
-            print(f"Transition {prev_bmi_col} -> {current_bmi_col}: "
-                  f"BMI change={bmi_change:.1f}, "
-                  f"Original prob={current_prob:.3f}, "
-                  f"BMI-adjusted prob={adjust_probability_by_bmi_change(bmi_change, current_prob):.3f}, "
-                  f"Final prob (with comorbidities)={adjusted_prob:.3f}")
+            return df_final
+        df_final = apply_enhanced_bmi_adjustments(df_final, clf_model)
     
     ###########################################################################
     # Confidence interval calculation (existing code)
@@ -981,6 +975,11 @@ if selected == 'Prediction':
     hypertension = inverse_dictionary['hypertension'][hypertension]
     hyperlipidemia = inverse_dictionary['hyperlipidemia'][hyperlipidemia]
     DMII_preoperative = inverse_dictionary['DMII_preoperative'][DMII_preoperative]
+    antidiab_drug_preop_no_therapy = inverse_dictionary['antidiab_drug_preop_no_therapy'][antidiab_drug_preop_no_therapy]
+    antidiab_drug_preop_glp1_analogen = inverse_dictionary['antidiab_drug_preop_glp1_analogen'][antidiab_drug_preop_glp1_analogen]
+    antidiab_drug_preop_Oral_anticogulation = inverse_dictionary['antidiab_drug_preop_Oral_anticogulation'][antidiab_drug_preop_Oral_anticogulation]
+    antidiab_drug_preop_Insulin = inverse_dictionary['antidiab_drug_preop_Insulin'][antidiab_drug_preop_Insulin]
+    osas_preoperative = inverse_dictionary['osas_preoperative'][osas_preoperative]
     # Create dataframe with the input data
     dataframe_input = pd.DataFrame({'age_years' : [age],
                                     'BMI before surgery' : [bmi_pre],
