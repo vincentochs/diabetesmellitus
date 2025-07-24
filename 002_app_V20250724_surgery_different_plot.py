@@ -2,7 +2,7 @@
 """
 Created on Sun Jan 26 21:31:05 2025
 
-@author: Vincent Ochs
+@author: Vincent Ochs 
 
 This script is used for generating an app for regression and classification
 task
@@ -834,11 +834,11 @@ def parser_user_input(dataframe_input , reg_model , clf_model, compare_surgeries
             bmi_difference = threshold_bmi - current_bmi
             # Surgery-specific effectiveness multiplier
             if surgery_type == 2:  # LRYGB - most effective
-                effectiveness_multiplier = 1.3
+                effectiveness_multiplier = 1.15
             elif surgery_type == 5:  # OAGB - moderately effective  
                 effectiveness_multiplier = 1.15
             else:  # LSG - baseline effectiveness
-                effectiveness_multiplier = 1.5
+                effectiveness_multiplier = 2.5
                 
             # The more below the threshold, the greater the reduction
             reduction_factor = min(base_adjustment * (1 + bmi_difference / 10) * effectiveness_multiplier, 0.8)
@@ -983,6 +983,15 @@ def parser_user_input(dataframe_input , reg_model , clf_model, compare_surgeries
             # Run regression and classification for this surgery
             predictions_df_regression = pd.DataFrame(reg_model.predict(df_surgery[reg_model.feature_names_in_.tolist()]))
             predictions_df_regression.columns = ['bmi3','bmi6','bmi12','bmi18','bmi2y','bmi3y','bmi4y','bmi5y']
+            # Change BMI curve, depending of the effectivenes of surgery
+            if surgery_name == 'Laparoscopic Sleeve Gastrectomy (LSG)':
+                print(f"Original BMI curve: {predictions_df_regression}")
+                predictions_df_regression = predictions_df_regression * 0.85
+                print(f"Modified BMI curve for {surgery_name}: {predictions_df_regression}")
+            if surgery_name == 'Laparoscopic Roux-en-Y Gastric Bypass (LRYGB)':
+                print(f"Original BMI curve: {predictions_df_regression}")
+                predictions_df_regression = predictions_df_regression * 1.0
+                print(f"Modified BMI curve for {surgery_name}: {predictions_df_regression}")
             
             df_classification = pd.concat([df_surgery, predictions_df_regression], axis=1)
             predictions_df_classification = pd.DataFrame(clf_model.predict(df_classification[clf_model.feature_names_in_.tolist()]))
