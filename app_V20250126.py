@@ -2,7 +2,7 @@
 """
 Created on Sun Jan 26 21:31:05 2025
 
-@author: Vincent Ochs
+@author: vincent ochs
 
 This script is used for generating an app for regression and classification
 task
@@ -492,7 +492,16 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
             dataframe_input[i] = dataframe_input[i].map(dictionary_categorical_features[i])
     predictions_df_regression = pd.DataFrame(reg_model.predict(dataframe_input[reg_model.feature_names_in_.tolist()]))
     predictions_df_regression.columns = ['bmi3','bmi6','bmi12','bmi18','bmi2y','bmi3y','bmi4y','bmi5y']
-    print(f"Regression df: {predictions_df_regression}")
+    # Change BMI curve, depending of the effectivenes of surgery
+    surgery_name = dataframe_input['surgery'].values[0]
+    if surgery_name == 1:
+        print(f"Original BMI curve: {predictions_df_regression}")
+        predictions_df_regression = predictions_df_regression * 0.85
+        print(f"Modified BMI curve for {surgery_name}: {predictions_df_regression}")
+    if surgery_name == 2:
+        print(f"Original BMI curve: {predictions_df_regression}")
+        predictions_df_regression = predictions_df_regression * 1.0
+        print(f"Modified BMI curve for {surgery_name}: {predictions_df_regression}")
    
     ###########################################################################
     # Classification part
@@ -607,11 +616,11 @@ def parser_user_input(dataframe_input , reg_model , clf_model):
                 bmi_difference = threshold_bmi - current_bmi
                 # Surgery-specific effectiveness multiplier
                 if surgery_type == 2:  # LRYGB - most effective
-                    effectiveness_multiplier = 1.3
+                    effectiveness_multiplier = 1.15
                 elif surgery_type == 5:  # OAGB - moderately effective  
                     effectiveness_multiplier = 1.15
                 else:  # LSG - baseline effectiveness
-                    effectiveness_multiplier = 1.5
+                    effectiveness_multiplier = 2.5
                     
                 # The more below the threshold, the greater the reduction
                 reduction_factor = min(base_adjustment * (1 + bmi_difference / 10) * effectiveness_multiplier, 0.8)
