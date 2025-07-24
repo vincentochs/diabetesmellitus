@@ -56,8 +56,8 @@ dictionary_categorical_features = {'sex (1 = female, 2=male)' : {'Male' : 2,
                                    'osas_preoperative' : {'Yes' : 1,
                                                           'No' : 0},
                                    'surgery' : {'Laparoscopic Sleeve Gastrectomy (LSG)' : 1,
-                                                'Laparoscopic Roux-en-Y Gastric Bypass (LRYGB)' : 2,
-                                                'OAGB' : 5},
+                                                'Laparoscopic Roux-en-Y Gastric Bypass (LRYGB)' : 2},
+                                                #'OAGB' : 5},
                                    
                                    'normal_dmII_pattern' : {'Yes' : 1,
                                                             'No' : 0},
@@ -347,9 +347,6 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                 <p style="font-size: 24px; margin: 10px 0; color: {prob_color}; font-weight: bold;">
                     Diabetes Probability: {current_dm_probability:.1%}
                 </p>
-                <p style="font-size: 20px; margin: 0; color: {prob_color}; font-weight: bold;">
-                    Risk Level: {prob_status}
-                </p>
             </div>
             """, unsafe_allow_html=True)
         
@@ -398,9 +395,6 @@ def create_animated_evolution_chart(df_final, clf_model, predictions_df, thresho
                     </p>
                     <p style="font-size: 16px; margin: 5px 0; color: {prob_color}; font-weight: bold;">
                         DM Risk: {current_dm_probability:.1%}
-                    </p>
-                    <p style="font-size: 14px; margin: 0; color: {prob_color}; font-weight: bold;">
-                        {prob_status}
                     </p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -823,15 +817,16 @@ if selected == 'Home':
     images = [r'images/basel.png',
               r'images/basel_university.jpeg',
               r'images/claraspital.png',
-              r'images/gzo_hospital.png',
+              r'images/wuzburg.png',
               r'images/linkoping_university.png',
-              r'images/marmara_university.png',
-              r'images/nova_medical_school.png',
-              r'images/thurgau_spital.jpg',
-              r'images/tiroler.png',
               r'images/umm.png',
-              r'images/warsaw_medical_university.png',
-              r'images/wuzburg.png']
+              r'images/tiroler.png',
+              r'images/marmara_university.png',
+              r'images/gzo_hospital.png',
+              r'images/thurgau_spital.jpg',
+              r'images/warsaw_medical_university.png',            
+              r'images/nova_medical_school.png'         
+              ]
     
     st.markdown("---")
     st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
@@ -1011,15 +1006,16 @@ if selected == 'Prediction':
         images = [r'images/basel.png',
                   r'images/basel_university.jpeg',
                   r'images/claraspital.png',
-                  r'images/gzo_hospital.png',
+                  r'images/wuzburg.png',
                   r'images/linkoping_university.png',
-                  r'images/marmara_university.png',
-                  r'images/nova_medical_school.png',
-                  r'images/thurgau_spital.jpg',
-                  r'images/tiroler.png',
                   r'images/umm.png',
-                  r'images/warsaw_medical_university.png',
-                  r'images/wuzburg.png']
+                  r'images/tiroler.png',
+                  r'images/marmara_university.png',
+                  r'images/gzo_hospital.png',
+                  r'images/thurgau_spital.jpg',
+                  r'images/warsaw_medical_university.png',            
+                  r'images/nova_medical_school.png'         
+                  ]
         
         st.markdown("---")
         st.markdown("<p style='text-align: center;'><strong>Collaborations:</strong></p>", unsafe_allow_html=True)
