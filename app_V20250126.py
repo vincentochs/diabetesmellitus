@@ -441,7 +441,7 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
 ###############################################################################
 # Page configuration
 st.set_page_config(
-    page_title="Bariatric Surgery Outcome Predictor",
+    page_title="DM Predictor",
     layout='wide'
 )
 
@@ -449,8 +449,8 @@ st.set_page_config(
 reg_model, clf_model = initialize_app()
 
 # --- HEADER ---
-st.title("Bariatric Surgery BMI Trajectory Predictor")
-st.markdown("This tool predicts the Body Mass Index (BMI) evolution for up to 5 years after bariatric surgery.")
+st.title("Diabetes Mellitus (DM) Predictor")
+st.markdown("This app let you select the patients information and the model is going to predict the BMI evolution of the patient and it's DM probability remission.")
 st.markdown("---")
 
 # --- LAYOUT ---
@@ -560,7 +560,7 @@ with output_col:
 # --- FOOTER ---
 st.markdown("---")
 st.markdown("""
-<div style="text-align: center; font-size: 12px; color: grey;">
+<div style="text-align: center; font-size: 16px; color: grey;">
     <b>Disclaimer:</b> This application and its results are intended for research purposes only. 
     It is not a medical device and should not be used for clinical decision-making.
 </div>
