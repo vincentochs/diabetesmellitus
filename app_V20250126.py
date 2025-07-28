@@ -7,8 +7,7 @@ Created on Sun Jan 26 21:31:05 2025
 This script is used for generating an app for regression and classification
 task.
 
-Refactored on Fri Jul 25 2025 to match the style of:
-https://bariatric-weight-trajectory-prediction.univ-lille.fr/
+Refactored on Mon Jul 28 2025 to re-introduce animation and focus on BMI.
 """
 
 ###############################################################################
@@ -25,6 +24,8 @@ import pickle as pkl
 import numpy as np
 import os
 import pickle
+import time
+from scipy.interpolate import make_interp_spline
 
 # Format of numbers
 print('Libraries loaded')
@@ -69,97 +70,111 @@ training_mae = 2.5
 @st.cache_data() # We use this decorator so this initialization doesn't run every time the user change into the page
 def initialize_app():
     # Load Regression Model
-    model_path = os.path.join('001_Regression_Model_App.sav')
-    with open(model_path , 'rb') as export_model:
+    # IMPORTANT: Ensure your model files are in a 'models' subdirectory.
+    model_path_reg = os.path.join('001_Regression_Model_App.sav')
+    with open(model_path_reg , 'rb') as export_model:
         regression_model = pickle.load(export_model) 
     # Load Classification Model
-    model_path = os.path.join('001_Classification_Model_App.sav')
-    with open(model_path, 'rb') as export_model:
+    model_path_clf = os.path.join('001_Classification_Model_App.sav')
+    with open(model_path_clf, 'rb') as export_model:
         classification_model = pickle.load(export_model) 
 
     print('App Initialized correctly!')
     
-    return regression_model , classification_model
+    return regression_model, classification_model
 
 ###############################################################################
-def create_prediction_chart(summary_df, y_axis_variable, y_axis_title, y_axis_format=".1f"):
+def create_animated_bmi_chart(summary_df):
     """
     Creates a static Altair chart for BMI or Weight evolution.
-
-    Args:
-        summary_df (pd.DataFrame): DataFrame containing the data to plot.
-        y_axis_variable (str): The column name for the Y-axis (e.g., 'BMI', 'Weight').
-        y_axis_title (str): The title for the Y-axis.
-        y_axis_format (str): The format for the tooltip values.
-
-    Returns:
-        alt.Chart: The Altair chart object.
     """
-    # Round to 2 decimal
-    summary_df[y_axis_variable] = summary_df[y_axis_variable].round(2)
-    summary_df[f'{y_axis_variable} CI Lower'] = summary_df[f'{y_axis_variable} CI Lower'].round(2)
-    summary_df[f'{y_axis_variable} CI Upper'] = summary_df[f'{y_axis_variable} CI Upper'].round(2)
+    st.subheader("Predicted BMI Evolution")
+    
+
+    # Chart placeholder
+    chart_placeholder = st.empty()
     
     time_map = {'Pre': 0, '3m': 3, '6m': 6, '12m': 12, '18m': 18, '2y': 24, '3y': 36, '4y': 48, '5y': 60}
-    summary_df['Months'] = summary_df['Time'].map(time_map)
+    time_points_values = list(time_map.values())
     
-    # Define the y-axis domain
-    y_min = summary_df[f'{y_axis_variable} CI Lower'].min() * 0.9
-    y_max = summary_df[f'{y_axis_variable} CI Upper'].max() * 1.1
+    # Get BMI values and confidence intervals
+    bmi_values = summary_df['BMI'].round(2).values
+    ci_lower_values = summary_df['BMI CI Lower'].round(2).values
+    ci_upper_values = summary_df['BMI CI Upper'].round(2).values
 
-    # Main prediction line
-    line = alt.Chart(summary_df).mark_line(
-        color='#0068c9',
-        size=3
-    ).encode(
-        x=alt.X('Months', title='Postoperative Months'),
-        y=alt.Y(y_axis_variable, title=y_axis_title, scale=alt.Scale(domain=[y_min, y_max])),
-        tooltip=[
-            alt.Tooltip('Months', title='Postop. Months'),
-            alt.Tooltip(y_axis_variable, title=y_axis_title, format=y_axis_format)
-        ]
-    )
+    # Calculate y-axis domain
+    y_min = summary_df['BMI CI Lower'].min() * 0.9
+    y_max = summary_df['BMI CI Upper'].max() * 1.1
 
-    # Confidence interval area
-    area = alt.Chart(summary_df).mark_area(
-        opacity=0.3,
-        color='#0068c9'
-    ).encode(
-        x='Months',
-        y=alt.Y(f'{y_axis_variable} CI Lower', title=''),
-        y2=alt.Y2(f'{y_axis_variable} CI Upper', title='')
-    )
-    
-    # Healthy BMI line (only for BMI chart)
-    if y_axis_variable == 'BMI':
-        healthy_bmi_line = alt.Chart(pd.DataFrame({'y': [25]})).mark_rule(color='green', strokeDash=[3,3], size=2).encode(y='y')
-        chart = (area + line + healthy_bmi_line)
-        st.markdown("""
+    # Pre-calculate all smooth curves for animation
+    total_steps = 120 # Higher number for smoother animation
+    smooth_months = np.linspace(0, 60, total_steps)
+    smooth_bmi_values = make_interp_spline(time_points_values, bmi_values)(smooth_months)
+    smooth_ci_lower = make_interp_spline(time_points_values, ci_lower_values)(smooth_months)
+    smooth_ci_upper = make_interp_spline(time_points_values, ci_upper_values)(smooth_months)
+
+    st.markdown("""
         <div style="font-size:14px; text-align: center; margin-bottom: 10px;">
             <span style="color:#0068c9;">■</span> Predicted BMI & 95% CI
             &nbsp;&nbsp;&nbsp;
             <span style="color:green;">- - -</span> Healthy BMI Target (25)
         </div>
         """, unsafe_allow_html=True)
-    else:
-        chart = area + line
 
-    return chart.properties(
-        width=600,
-        height=400
-    ).configure_axis(
-        labelFontSize=12,
-        titleFontSize=14
-    ).interactive()
+    # Build animated chart
+    for i in range(1, total_steps + 1):
+        # Create data for the current animation frame
+        current_data = pd.DataFrame({
+            'Months': smooth_months[:i],
+            'BMI': smooth_bmi_values[:i],
+            'CI_Lower': smooth_ci_lower[:i],
+            'CI_Upper': smooth_ci_upper[:i]
+        })
+        
+        current_data['Months'] = current_data['Months'].round(2)
+        current_data['BMI'] = current_data['BMI'].round(2)
+        current_data['CI_Lower'] = current_data['CI_Lower'].round(2)
+        current_data['CI_Upper'] = current_data['CI_Upper'].round(2)
+
+        # Main prediction line
+        line = alt.Chart(current_data).mark_line(
+            color='#0068c9',
+            size=3
+        ).encode(
+            x=alt.X('Months', title='Postoperative Months', scale=alt.Scale(domain=[0, 60])),
+            y=alt.Y('BMI', title='Body Mass Index (BMI)', scale=alt.Scale(domain=[y_min, y_max]))
+        )
+
+        # Confidence interval area
+        area = alt.Chart(current_data).mark_area(
+            opacity=0.3,
+            color='#0068c9'
+        ).encode(
+            x='Months',
+            y='CI_Lower',
+            y2='CI_Upper'
+        )
+        
+        # Healthy BMI line (static)
+        healthy_bmi_line = alt.Chart(pd.DataFrame({'y': [25]})).mark_rule(color='green', strokeDash=[3,3], size=2).encode(y='y')
+        
+        # Combine charts
+        final_chart = (area + line + healthy_bmi_line).properties(
+            width=600,
+            height=400
+        ).configure_axis(
+            labelFontSize=12,
+            titleFontSize=14
+        )
+
+        chart_placeholder.altair_chart(final_chart, use_container_width=True)
+        time.sleep(0.01)
 
 # Parser input information
-def parser_user_input(dataframe_input, reg_model, clf_model, height_cm):
+def parser_user_input(dataframe_input, reg_model, clf_model):
     """
     Parses user input, runs predictions, and returns a comprehensive dataframe.
     """
-    ##########################################################################
-    # Regression part
-    
     # Encode categorical features
     for i in dictionary_categorical_features.keys():
         if i in dataframe_input.columns:
@@ -172,14 +187,10 @@ def parser_user_input(dataframe_input, reg_model, clf_model, height_cm):
     surgery_name = dataframe_input['surgery'].values[0]
     if surgery_name == 1: # LSG
         predictions_df_regression *= 0.85
-    # For LRYGB (2), we use the default prediction (1.0)
     
-    ###########################################################################
     # Classification part
     df_classification = pd.concat([dataframe_input, predictions_df_regression], axis=1)
     
-    # Note: The logic for DM prediction remains complex and internal to this function
-    # It will be simplified for this example, but the original logic is preserved below
     _x = clf_model.predict_proba(df_classification[clf_model.feature_names_in_.tolist()])
     _x = [value[0][1] for value in _x]
     probas_df_classification = pd.DataFrame([_x])
@@ -406,36 +417,18 @@ def parser_user_input(dataframe_input, reg_model, clf_model, height_cm):
             return df_final
         df_final = apply_enhanced_bmi_adjustments(df_final, clf_model)
     
-    ###########################################################################
-    # Confidence interval and summary creation
+    # Confidence interval creation
     bmi_columns = ['BMI before surgery', 'bmi3', 'bmi6', 'bmi12', 'bmi18', 'bmi2y', 'bmi3y', 'bmi4y', 'bmi5y']
 
     for col in bmi_columns:
         df_final[f'{col}_ci_lower'] = df_final[col] - training_mae
         df_final[f'{col}_ci_upper'] = df_final[col] + training_mae
         
-    # Calculate Weight and Weight CI
-    height_m_sq = (height_cm / 100) ** 2
-    for col in bmi_columns:
-        weight_col_name = col.replace('bmi', 'weight').replace('BMI before surgery', 'weight_preop')
-        df_final[weight_col_name] = df_final[col] * height_m_sq
-        df_final[f'{weight_col_name}_ci_lower'] = df_final[f'{col}_ci_lower'] * height_m_sq
-        df_final[f'{weight_col_name}_ci_upper'] = df_final[f'{col}_ci_upper'] * height_m_sq
-
-    # Create a clean summary dataframe for plotting and metrics
-    summary_df = pd.DataFrame({
-        'Time': ['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y', '5y'],
-    })
-
-    # Add BMI and Weight data to summary
+    # Create a clean summary dataframe
+    summary_df = pd.DataFrame({'Time': ['Pre', '3m', '6m', '12m', '18m', '2y', '3y', '4y', '5y']})
     summary_df['BMI'] = df_final[bmi_columns].iloc[0].values
     summary_df['BMI CI Lower'] = df_final[[f'{c}_ci_lower' for c in bmi_columns]].iloc[0].values
     summary_df['BMI CI Upper'] = df_final[[f'{c}_ci_upper' for c in bmi_columns]].iloc[0].values
-    
-    weight_cols = [c.replace('bmi', 'weight').replace('BMI before surgery', 'weight_preop') for c in bmi_columns]
-    summary_df['Weight'] = df_final[weight_cols].iloc[0].values
-    summary_df['Weight CI Lower'] = df_final[[f'{c}_ci_lower' for c in weight_cols]].iloc[0].values
-    summary_df['Weight CI Upper'] = df_final[[f'{c}_ci_upper' for c in weight_cols]].iloc[0].values
     
     # Add Diabetes data
     dm_status_cols = ['DMII_preoperative', 'dm3m', 'dm6m', 'dm12m', 'dm18m', 'dm2y', 'dm3y', 'dm4y', 'dm5y']
@@ -456,8 +449,8 @@ st.set_page_config(
 reg_model, clf_model = initialize_app()
 
 # --- HEADER ---
-st.title("Bariatric Surgery Weight Trajectory Predictor")
-st.markdown("This tool predicts the Body Mass Index (BMI) and weight evolution for up to 5 years after bariatric surgery.")
+st.title("Bariatric Surgery BMI Trajectory Predictor")
+st.markdown("This tool predicts the Body Mass Index (BMI) evolution for up to 5 years after bariatric surgery.")
 st.markdown("---")
 
 # --- LAYOUT ---
@@ -469,7 +462,6 @@ with input_col:
 
     st.subheader("Patient Data")
     age = st.slider("Age (Years):", min_value=18, max_value=80, value=45, step=1)
-    height = st.slider("Height (cm):", min_value=140, max_value=220, value=170, step=1)
     bmi_pre = st.slider("Preoperative BMI:", min_value=30.0, max_value=70.0, value=42.0, step=0.1)
     sex = st.radio("Sex:", options=['Female', 'Male'], horizontal=True)
 
@@ -524,47 +516,43 @@ with output_col:
             dataframe_input = pd.DataFrame(input_data)
             
             # Run prediction
-            summary_df = parser_user_input(dataframe_input, reg_model, clf_model, height)
+            summary_df = parser_user_input(dataframe_input, reg_model, clf_model)
             
-            # Display results in tabs
-            tab1, tab2, tab3 = st.tabs(["Key Metrics", "BMI Evolution", "Weight Evolution"])
+            # Display results
+            st.subheader("Predicted Outcomes at Key Timepoints")
+            cols = st.columns(3)
+            bmi_1y = summary_df.loc[summary_df['Time'] == '12m', 'BMI'].values[0]
+            bmi_3y = summary_df.loc[summary_df['Time'] == '3y', 'BMI'].values[0]
+            bmi_5y = summary_df.loc[summary_df['Time'] == '5y', 'BMI'].values[0]
+            
+            cols[0].metric(label="BMI at 1 Year", value=f"{bmi_1y:.1f}")
+            cols[1].metric(label="BMI at 3 Years", value=f"{bmi_3y:.1f}")
+            cols[2].metric(label="BMI at 5 Years", value=f"{bmi_5y:.1f}")
 
-            with tab1:
-                st.subheader("Predicted Outcomes at Key Timepoints")
+            # Create and display animated chart
+            create_animated_bmi_chart(summary_df)
+            
+            if DMII_preoperative:
+                st.subheader("Diabetes Remission Likelihood")
+                dm_prob_df = summary_df[['Time', 'DM Likelihood (%)']].set_index('Time')
                 
-                # Metrics at 1, 3, 5 years
-                weight_preop = summary_df.loc[summary_df['Time'] == 'Pre', 'Weight'].values[0]
-                ideal_weight = 25 * ((height / 100) ** 2)
-                excess_weight = weight_preop - ideal_weight
-
-                for year, time_code in zip([1, 3, 5], ['12m', '3y', '5y']):
-                    st.markdown(f"**After {year} Year{'s' if year > 1 else ''}:**")
-                    cols = st.columns(3)
-                    
-                    bmi_pred = summary_df.loc[summary_df['Time'] == time_code, 'BMI'].values[0]
-                    weight_pred = summary_df.loc[summary_df['Time'] == time_code, 'Weight'].values[0]
-                    weight_loss = weight_preop - weight_pred
-                    ewl = (weight_loss / excess_weight * 100) if excess_weight > 0 else 0
-
-                    cols[0].metric(label="Predicted BMI", value=f"{bmi_pred:.1f}")
-                    cols[1].metric(label="Total Weight Loss", value=f"{weight_loss:.1f} kg")
-                    cols[2].metric(label="% Excess Weight Loss", value=f"{ewl:.1f} %")
+                # Apply scientific styling with a color gradient
+                styled_dm_table = dm_prob_df.style.format({
+                    "DM Likelihood (%)": "{:.1f}%"
+                }).background_gradient(
+                    cmap='RdYlGn_r',  # Red-Yellow-Green (Reversed)
+                    subset=['DM Likelihood (%)'],
+                    vmin=0,
+                    vmax=100
+                ).set_properties(**{
+                    'text-align': 'center',
+                    'font-size': '14px',
+                    'width': '100px'
+                }).set_table_styles([
+                    {'selector': 'th', 'props': [('text-align', 'center'), ('font-size', '16px')]},
+                ])
                 
-                if DMII_preoperative:
-                    st.subheader("Diabetes Remission Likelihood")
-                    dm_prob_df = summary_df[['Time', 'DM Likelihood (%)']].set_index('Time')
-                    st.dataframe(dm_prob_df, use_container_width=True)
-
-
-            with tab2:
-                st.subheader("Predicted BMI Evolution")
-                bmi_chart = create_prediction_chart(summary_df, 'BMI', 'Body Mass Index (BMI)')
-                st.altair_chart(bmi_chart, use_container_width=True)
-
-            with tab3:
-                st.subheader("Predicted Weight Evolution")
-                weight_chart = create_prediction_chart(summary_df, 'Weight', 'Weight (kg)')
-                st.altair_chart(weight_chart, use_container_width=True)
+                st.write(styled_dm_table)
     
     else:
         st.info("Please enter patient data and click 'Compute Prediction' to see the results.")
@@ -579,7 +567,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # Sponsor Images
 images = [r'images/basel.png',
-          r'images/basel_university.jpeg',
+          r'images/kannospital.png',
+          r'images/basel_2.png',
           r'images/claraspital.png',
           r'images/wuzburg.png',
           r'images/linkoping_university.png',
@@ -654,5 +643,10 @@ partner_logos = [
     "title": "",
     "text" : "",
     "img": images[11]
+},
+{
+    "title": "",
+    "text" : "",
+    "img": images[12]
 }]
 carousel(items=partner_logos, width=0.25)
