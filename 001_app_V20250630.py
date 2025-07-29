@@ -2,7 +2,7 @@
 """
 Created on Sun Jan 26 21:31:05 2025
 
-@author: Vincent Ochs 
+@author: Vincent Ochs
 
 This script is used for generating an app for regression and classification
 task.
@@ -185,8 +185,8 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
     
     # Adjust BMI curve based on surgery effectiveness
     surgery_name = dataframe_input['surgery'].values[0]
-    if surgery_name == 1: # LSG
-        predictions_df_regression *= 0.85
+    if surgery_name == 2: # LSG
+        predictions_df_regression *= 0.75
     
     # Classification part
     df_classification = pd.concat([dataframe_input, predictions_df_regression], axis=1)
@@ -285,11 +285,11 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
                 bmi_difference = threshold_bmi - current_bmi
                 # Surgery-specific effectiveness multiplier
                 if surgery_type == 2:  # LRYGB - most effective
-                    effectiveness_multiplier = 1.15
+                    effectiveness_multiplier = 3.5
                 elif surgery_type == 5:  # OAGB - moderately effective  
                     effectiveness_multiplier = 1.15
                 else:  # LSG - baseline effectiveness
-                    effectiveness_multiplier = 2.5
+                    effectiveness_multiplier = 1.15
                     
                 # The more below the threshold, the greater the reduction
                 reduction_factor = min(base_adjustment * (1 + bmi_difference / 10) * effectiveness_multiplier, 0.8)
