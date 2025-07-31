@@ -567,6 +567,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 # Sponsor Images
 images = [r'images/basel.png',
+          r'images/Logo_Unibas_BraPan_EN.png',
           r'images/kannospital.png',
           r'images/basel_2.png',
           r'images/claraspital.png',
@@ -578,7 +579,8 @@ images = [r'images/basel.png',
           r'images/gzo_hospital.png',
           r'images/thurgau_spital.jpg',
           r'images/warsaw_medical_university.png',            
-          r'images/nova_medical_school.png'         
+          r'images/nova_medical_school.png',
+          r'images/ECU.png'   
           ]
 
 st.markdown("---")
@@ -648,5 +650,15 @@ partner_logos = [
     "title": "",
     "text" : "",
     "img": images[12]
+},
+{
+    "title": "",
+    "text" : "",
+    "img": images[13]
+},
+{
+    "title": "",
+    "text" : "",
+    "img": images[14]
 }]
 carousel(items=partner_logos, width=0.25)
