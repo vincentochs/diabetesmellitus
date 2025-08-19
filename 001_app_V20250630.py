@@ -2,12 +2,12 @@
 """
 Created on Sun Jan 26 21:31:05 2025
 
-@author: Vincent Ochs 
+@author: Vincent Ochs
 
 This script is used for generating an app for regression and classification
 task.
 
-Refactored on Mon Jul 28 2025 to re-introduce animation and focus on BMI.
+Refactored on Mon Aug 18 2025 to include Weight/Height input and Weight prediction.
 """
 
 ###############################################################################
@@ -72,10 +72,17 @@ def initialize_app():
     # Load Regression Model
     # IMPORTANT: Ensure your model files are in a 'models' subdirectory.
     model_path_reg = os.path.join('001_Regression_Model_App.sav')
+    if not os.path.exists(model_path_reg):
+        st.error(f"Regression model not found at {model_path_reg}. Please ensure the 'models' directory and its contents are correctly placed.")
+        st.stop()
     with open(model_path_reg , 'rb') as export_model:
-        regression_model = pickle.load(export_model) 
+        regression_model = pickle.load(export_model)
+
     # Load Classification Model
     model_path_clf = os.path.join('001_Classification_Model_App.sav')
+    if not os.path.exists(model_path_clf):
+        st.error(f"Classification model not found at {model_path_clf}. Please ensure the 'models' directory and its contents are correctly placed.")
+        st.stop()
     with open(model_path_clf, 'rb') as export_model:
         classification_model = pickle.load(export_model) 
 
@@ -84,12 +91,12 @@ def initialize_app():
     return regression_model, classification_model
 
 ###############################################################################
-def create_animated_bmi_chart(summary_df):
+# Generic function to create animated chart for BMI or Weight
+def create_animated_chart(summary_df, y_col, y_title, ci_lower_col, ci_upper_col, target_line_val=None, target_line_color='green'):
     """
-    Creates a static Altair chart for BMI or Weight evolution.
+    Creates an animated Altair chart for BMI or Weight evolution.
     """
-    st.subheader("Predicted BMI Evolution")
-    
+    st.subheader(f"Predicted {y_title} Evolution")
 
     # Chart placeholder
     chart_placeholder = st.empty()
@@ -97,42 +104,43 @@ def create_animated_bmi_chart(summary_df):
     time_map = {'Pre': 0, '3m': 3, '6m': 6, '12m': 12, '18m': 18, '2y': 24, '3y': 36, '4y': 48, '5y': 60}
     time_points_values = list(time_map.values())
     
-    # Get BMI values and confidence intervals
-    bmi_values = summary_df['BMI'].round(2).values
-    ci_lower_values = summary_df['BMI CI Lower'].round(2).values
-    ci_upper_values = summary_df['BMI CI Upper'].round(2).values
+    # Get values and confidence intervals for the selected column (BMI or Weight)
+    y_values = summary_df[y_col].round(2).values
+    ci_lower_values = summary_df[ci_lower_col].round(2).values
+    ci_upper_values = summary_df[ci_upper_col].round(2).values
 
     # Calculate y-axis domain
-    y_min = summary_df['BMI CI Lower'].min() * 0.9
-    y_max = summary_df['BMI CI Upper'].max() * 1.1
+    y_min = summary_df[ci_lower_col].min() * 0.9
+    y_max = summary_df[ci_upper_col].max() * 1.1
 
     # Pre-calculate all smooth curves for animation
     total_steps = 120 # Higher number for smoother animation
     smooth_months = np.linspace(0, 60, total_steps)
-    smooth_bmi_values = make_interp_spline(time_points_values, bmi_values)(smooth_months)
+    smooth_y_values = make_interp_spline(time_points_values, y_values)(smooth_months)
     smooth_ci_lower = make_interp_spline(time_points_values, ci_lower_values)(smooth_months)
     smooth_ci_upper = make_interp_spline(time_points_values, ci_upper_values)(smooth_months)
 
-    st.markdown("""
+    legend_html = f"""
         <div style="font-size:14px; text-align: center; margin-bottom: 10px;">
-            <span style="color:#0068c9;">■</span> Predicted BMI & 95% CI
-            &nbsp;&nbsp;&nbsp;
-            <span style="color:green;">- - -</span> Healthy BMI Target (25)
-        </div>
-        """, unsafe_allow_html=True)
+            <span style="color:#0068c9;">■</span> Predicted {y_col} & 95% CI
+            <span style="color:green;">- - -</span> Healthy {y_col} Target 
+    """
+    legend_html += "</div>"
+    st.markdown(legend_html, unsafe_allow_html=True)
+
 
     # Build animated chart
     for i in range(1, total_steps + 1):
         # Create data for the current animation frame
         current_data = pd.DataFrame({
             'Months': smooth_months[:i],
-            'BMI': smooth_bmi_values[:i],
+            y_col: smooth_y_values[:i],
             'CI_Lower': smooth_ci_lower[:i],
             'CI_Upper': smooth_ci_upper[:i]
         })
         
         current_data['Months'] = current_data['Months'].round(2)
-        current_data['BMI'] = current_data['BMI'].round(2)
+        current_data[y_col] = current_data[y_col].round(2)
         current_data['CI_Lower'] = current_data['CI_Lower'].round(2)
         current_data['CI_Upper'] = current_data['CI_Upper'].round(2)
 
@@ -142,7 +150,7 @@ def create_animated_bmi_chart(summary_df):
             size=3
         ).encode(
             x=alt.X('Months', title='Postoperative Months', scale=alt.Scale(domain=[0, 60])),
-            y=alt.Y('BMI', title='Body Mass Index (BMI)', scale=alt.Scale(domain=[y_min, y_max]))
+            y=alt.Y(y_col, title=y_title, scale=alt.Scale(domain=[y_min, y_max]))
         )
 
         # Confidence interval area
@@ -155,11 +163,15 @@ def create_animated_bmi_chart(summary_df):
             y2='CI_Upper'
         )
         
-        # Healthy BMI line (static)
-        healthy_bmi_line = alt.Chart(pd.DataFrame({'y': [25]})).mark_rule(color='green', strokeDash=[3,3], size=2).encode(y='y')
-        
         # Combine charts
-        final_chart = (area + line + healthy_bmi_line).properties(
+        combined_chart = area + line
+
+        # Add target line if specified
+        if target_line_val is not None:
+            target_line = alt.Chart(pd.DataFrame({'y': [target_line_val]})).mark_rule(color=target_line_color, strokeDash=[3,3], size=2).encode(y='y')
+            combined_chart += target_line
+        
+        final_chart = combined_chart.properties(
             width=600,
             height=400
         ).configure_axis(
@@ -170,8 +182,8 @@ def create_animated_bmi_chart(summary_df):
         chart_placeholder.altair_chart(final_chart, use_container_width=True)
         time.sleep(0.01)
 
-# Parser input information
-def parser_user_input(dataframe_input, reg_model, clf_model):
+# Added height_m parameter to calculate weight
+def parser_user_input(dataframe_input, reg_model, clf_model, height_m):
     """
     Parses user input, runs predictions, and returns a comprehensive dataframe.
     """
@@ -185,7 +197,7 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
     
     # Adjust BMI curve based on surgery effectiveness
     surgery_name = dataframe_input['surgery'].values[0]
-    if surgery_name == 2: # LSG
+    if surgery_name == 2: # LRYGB is more effective in this model's data
         predictions_df_regression *= 0.85
     
     # Classification part
@@ -213,127 +225,43 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
                                                   time_step, medications, base_adjustment=0.05):
             """
             Enhanced function to adjust DM probability based on BMI change, surgery type, and medications
-            
-            Parameters:
-            - bmi_change: Change in BMI (negative = reduction, positive = increase)
-            - current_prob: Current DM probability
-            - current_bmi: Current BMI value
-            - surgery_type: Type of surgery (1=LSG, 2=LRYGB, 5=OAGB)
-            - time_step: Time step identifier
-            - medications: Dictionary with medication flags
-            - base_adjustment: Base adjustment factor per BMI unit change
             """
             
-            # Surgery-specific BMI thresholds based on your table
-            # Using the "Lite threshold BMI" values from your image
+            # Surgery-specific BMI thresholds
             surgery_thresholds = {
-                # LSG (Laparoscopic Sleeve Gastrectomy) - surgery type 1
-                1: {
-                    '3m': 35.0,   # 3 months
-                    '6m': 32.0,   # 6 months  
-                    '12m': 30.0,  # 12 months
-                    '18m': 28.0,  # 18 months
-                    '2y': 27.0,   # 2 years
-                    '3y': 26.0,   # 3 years
-                    '4y': 25.0,   # 4 years
-                    '5y': 25.0    # 5 years
-                },
-                # LRYGB (Laparoscopic Roux-en-Y Gastric Bypass) - surgery type 2
-                2: {
-                    '3m': 33.0,   # Typically more aggressive weight loss
-                    '6m': 30.0,   
-                    '12m': 28.0,  
-                    '18m': 26.0,  
-                    '2y': 25.0,   
-                    '3y': 24.0,   
-                    '4y': 23.0,   
-                    '5y': 23.0    
-                },
-                # OAGB (One Anastomosis Gastric Bypass) - surgery type 5
-                5: {
-                    '3m': 34.0,   # Between LSG and LRYGB
-                    '6m': 31.0,   
-                    '12m': 29.0,  
-                    '18m': 27.0,  
-                    '2y': 26.0,   
-                    '3y': 25.0,   
-                    '4y': 24.0,   
-                    '5y': 24.0    
-                }
+                1: {'3m': 35.0, '6m': 32.0, '12m': 30.0, '18m': 28.0, '2y': 27.0, '3y': 26.0, '4y': 25.0, '5y': 25.0},
+                2: {'3m': 33.0, '6m': 30.0, '12m': 28.0, '18m': 26.0, '2y': 25.0, '3y': 24.0, '4y': 23.0, '5y': 23.0},
+                5: {'3m': 34.0, '6m': 31.0, '12m': 29.0, '18m': 27.0, '2y': 26.0, '3y': 25.0, '4y': 24.0, '5y': 24.0}
             }
             
-            # Time step mapping
-            time_step_map = {
-                'dm3m_prob': '3m',
-                'dm6m_prob': '6m', 
-                'dm12m_prob': '12m',
-                'dm18m_prob': '18m',
-                'dm2y_prob': '2y',
-                'dm3y_prob': '3y',
-                'dm4y_prob': '4y',
-                'dm5y_prob': '5y'
-            }
+            time_step_map = {'dm3m_prob': '3m', 'dm6m_prob': '6m', 'dm12m_prob': '12m', 'dm18m_prob': '18m', 'dm2y_prob': '2y', 'dm3y_prob': '3y', 'dm4y_prob': '4y', 'dm5y_prob': '5y'}
             
-            # Get the appropriate threshold for this surgery and time step
-            surgery_key = surgery_type if surgery_type in surgery_thresholds else 1  # Default to LSG
-            time_key = time_step_map.get(time_step, '3m')  # Default to 3m if not found
-            threshold_bmi = surgery_thresholds[surgery_key].get(time_key, 30.0)  # Default threshold
+            surgery_key = surgery_type if surgery_type in surgery_thresholds else 1
+            time_key = time_step_map.get(time_step, '3m')
+            threshold_bmi = surgery_thresholds[surgery_key].get(time_key, 30.0)
             
-            # Calculate BMI-based adjustment
             if current_bmi <= threshold_bmi:
-                # BMI is below threshold - higher chance of remission (lower DM probability)
                 bmi_difference = threshold_bmi - current_bmi
-                # Surgery-specific effectiveness multiplier
-                if surgery_type == 2:  # LRYGB - most effective
-                    effectiveness_multiplier = 2.5
-                elif surgery_type == 5:  # OAGB - moderately effective  
-                    effectiveness_multiplier = 1.15
-                else:  # LSG - baseline effectiveness
-                    effectiveness_multiplier = 1.30
-                    
-                # The more below the threshold, the greater the reduction
+                effectiveness_multiplier = {1: 1.30, 2: 2.5, 5: 1.15}.get(surgery_type, 1.30)
                 reduction_factor = min(base_adjustment * (1 + bmi_difference / 10) * effectiveness_multiplier, 0.8)
                 bmi_adjusted_prob = current_prob * (1 - reduction_factor)
             else:
-                # BMI is above threshold - lower chance of remission (higher DM probability)
                 bmi_difference = current_bmi - threshold_bmi
-                # The more above the threshold, the smaller the reduction (or even increase)
                 increase_factor = min(base_adjustment * (bmi_difference / 10), 0.3)
                 bmi_adjusted_prob = current_prob * (1 + increase_factor)
             
-            # Apply medication effects (medications reduce DM probability)
             medication_reduction = 0.0
+            if medications.get('antidiab_drug_preop_glp1_analogen', 0) == 1: medication_reduction += 0.15
+            if medications.get('antidiab_drug_preop_Oral_anticogulation', 0) == 1: medication_reduction += 0.10
+            if medications.get('antidiab_drug_preop_Insulin', 0) == 1: medication_reduction += 0.08
             
-            # GLP-1 analogs - strong effect on diabetes remission
-            if medications.get('antidiab_drug_preop_glp1_analogen', 0) == 1:
-                medication_reduction += 0.15  # 15% reduction
-            
-            # Oral antidiabetic drugs - moderate effect
-            if medications.get('antidiab_drug_preop_Oral_anticogulation', 0) == 1:
-                medication_reduction += 0.10  # 10% reduction
-                
-            # Insulin - indicates more severe diabetes, but still some protective effect
-            if medications.get('antidiab_drug_preop_Insulin', 0) == 1:
-                medication_reduction += 0.08  # 8% reduction
-            
-            # No therapy - no additional benefit
-            if medications.get('antidiab_drug_preop_no_therapy', 0) == 1:
-                medication_reduction += 0.0  # No additional reduction
-            
-            # Apply medication reduction
             final_adjusted_prob = bmi_adjusted_prob * (1 - medication_reduction)
-            
-            # Ensure probability stays within [0, 1] bounds
-            final_adjusted_prob = max(0.0, min(1.0, final_adjusted_prob))
-            
-            return final_adjusted_prob
+            return max(0.0, min(1.0, final_adjusted_prob))
         
-        # Apply BMI change-based adjustments to each time step
         def apply_enhanced_bmi_adjustments(df_final, clf_model):
             """
             Apply enhanced BMI adjustments with surgery-specific thresholds and medication effects
             """
-            # Define BMI time step transitions
             bmi_transitions = [
                 {'prev_bmi': 'BMI before surgery', 'current_bmi': 'bmi3', 'prob_col': 'dm3m_prob'},
                 {'prev_bmi': 'bmi3', 'current_bmi': 'bmi6', 'prob_col': 'dm6m_prob'},
@@ -345,74 +273,26 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
                 {'prev_bmi': 'bmi4y', 'current_bmi': 'bmi5y', 'prob_col': 'dm5y_prob'}
             ]
             
-            # Only apply BMI-based adjustments if patient has preoperative diabetes
             if df_final['DMII_preoperative'].iloc[0] == 1:
-                
-                # Get surgery type and medications
                 surgery_type = df_final['surgery'].iloc[0]
-                medications = {
-                    'antidiab_drug_preop_glp1_analogen': df_final['antidiab_drug_preop_glp1_analogen'].iloc[0],
-                    'antidiab_drug_preop_Oral_anticogulation': df_final['antidiab_drug_preop_Oral_anticogulation'].iloc[0],
-                    'antidiab_drug_preop_Insulin': df_final['antidiab_drug_preop_Insulin'].iloc[0],
-                    'antidiab_drug_preop_no_therapy': df_final['antidiab_drug_preop_no_therapy'].iloc[0]
-                }
+                medications = {k: df_final[k].iloc[0] for k in ['antidiab_drug_preop_glp1_analogen', 'antidiab_drug_preop_Oral_anticogulation', 'antidiab_drug_preop_Insulin', 'antidiab_drug_preop_no_therapy']}
                 
-                # Apply enhanced BMI change-based adjustments to each time step
                 for transition in bmi_transitions:
-                    prev_bmi_col = transition['prev_bmi']
-                    current_bmi_col = transition['current_bmi']
-                    prob_col = transition['prob_col']
-                    
-                    prev_bmi = df_final[prev_bmi_col].iloc[0]
-                    current_bmi = df_final[current_bmi_col].iloc[0]
-                    current_prob = df_final[prob_col].iloc[0]
-                    
-                    # Calculate BMI change
+                    prev_bmi = df_final[transition['prev_bmi']].iloc[0]
+                    current_bmi = df_final[transition['current_bmi']].iloc[0]
+                    current_prob = df_final[transition['prob_col']].iloc[0]
                     bmi_change = current_bmi - prev_bmi
                     
-                    # Calculate adjusted probability using enhanced function
-                    adjusted_prob = adjust_probability_by_bmi_change_enhanced(
-                        bmi_change=bmi_change,
-                        current_prob=current_prob, 
-                        current_bmi=current_bmi,
-                        surgery_type=surgery_type,
-                        time_step=prob_col,
-                        medications=medications
-                    )
+                    adjusted_prob = adjust_probability_by_bmi_change_enhanced(bmi_change, current_prob, current_bmi, surgery_type, transition['prob_col'], medications)
                     
-                    # Apply comorbidity adjustments (hypertension and hyperlipidemia)
                     comorbidity_factor = 1.0
+                    if df_final['hypertension'].iloc[0] == 1: comorbidity_factor *= 1.35
+                    if df_final['hyperlipidemia'].iloc[0] == 1: comorbidity_factor *= 1.20
+                    if df_final['osas_preoperative'].iloc[0] == 1: comorbidity_factor *= 1.10
                     
-                    # Hypertension increases DM probability by 10-15%
-                    if df_final['hypertension'].iloc[0] == 1:
-                        comorbidity_factor *= 1.35
-                    
-                    # Hyperlipidemia increases DM probability by 8-12%
-                    if df_final['hyperlipidemia'].iloc[0] == 1:
-                        comorbidity_factor *= 1.20
-                    # OSAS increase DM probability by 10%
-                    if df_final['osas_preoperative'].iloc[0] == 1:
-                        comorbidity_factor *= 1.10
-                    
-                    # Apply comorbidity factor
                     final_adjusted_prob = min(1.0, adjusted_prob * comorbidity_factor)
-                    
-                    # Update the probability in the dataframe
-                    df_final[prob_col] = final_adjusted_prob
-                    
-                    # Also update the binary prediction based on adjusted probability
-                    binary_col = prob_col.replace('_prob', '')
-                    df_final[binary_col] = 1 if final_adjusted_prob > 0.5 else 0
-                    
-                    # Get surgery name for logging
-                    surgery_names = {1: 'LSG', 2: 'LRYGB', 5: 'OAGB'}
-                    surgery_name = surgery_names.get(surgery_type, 'Unknown')
-                    
-                    print(f"Transition {prev_bmi_col} -> {current_bmi_col}: "
-                          f"Surgery={surgery_name}, BMI={current_bmi:.1f}, BMI change={bmi_change:.1f}, "
-                          f"Original prob={current_prob:.3f}, "
-                          f"Adjusted prob={adjusted_prob:.3f}, "
-                          f"Final prob (with comorbidities)={final_adjusted_prob:.3f}")
+                    df_final.loc[0, transition['prob_col']] = final_adjusted_prob
+                    df_final.loc[0, transition['prob_col'].replace('_prob', '')] = 1 if final_adjusted_prob > 0.5 else 0
             
             return df_final
         df_final = apply_enhanced_bmi_adjustments(df_final, clf_model)
@@ -430,6 +310,12 @@ def parser_user_input(dataframe_input, reg_model, clf_model):
     summary_df['BMI CI Lower'] = df_final[[f'{c}_ci_lower' for c in bmi_columns]].iloc[0].values
     summary_df['BMI CI Upper'] = df_final[[f'{c}_ci_upper' for c in bmi_columns]].iloc[0].values
     
+    # Calculate predicted weight if height is available
+    if height_m > 0:
+        summary_df['Weight'] = summary_df['BMI'] * (height_m ** 2)
+        summary_df['Weight CI Lower'] = summary_df['BMI CI Lower'] * (height_m ** 2)
+        summary_df['Weight CI Upper'] = summary_df['BMI CI Upper'] * (height_m ** 2)
+
     # Add Diabetes data
     dm_status_cols = ['DMII_preoperative', 'dm3m', 'dm6m', 'dm12m', 'dm18m', 'dm2y', 'dm3y', 'dm4y', 'dm5y']
     dm_prob_cols = ['DMII_preoperative_prob', 'dm3m_prob', 'dm6m_prob', 'dm12m_prob', 'dm18m_prob', 'dm2y_prob', 'dm3y_prob', 'dm4y_prob', 'dm5y_prob']
@@ -446,7 +332,12 @@ st.set_page_config(
 )
 
 # Load Models
-reg_model, clf_model = initialize_app()
+try:
+    reg_model, clf_model = initialize_app()
+except Exception as e:
+    st.error(f"Failed to load models. Error: {e}")
+    st.stop()
+
 
 # --- HEADER ---
 st.title("Diabetes Mellitus (DM) Predictor")
@@ -462,8 +353,21 @@ with input_col:
 
     st.subheader("Patient Data")
     age = st.slider("Age (Years):", min_value=18, max_value=80, value=45, step=1)
-    bmi_pre = st.slider("Preoperative BMI:", min_value=30.0, max_value=70.0, value=42.0, step=0.1)
     sex = st.radio("Sex:", options=['Female', 'Male'], horizontal=True)
+
+    # MODIFICATION: Changed radio options and made Height a required input
+    input_method = st.radio("Input Method:", ("Enter BMI & Height", "Enter Weight & Height"))
+
+    bmi_pre = 0.0
+    weight_kg = 0.0
+    # Height is now a required input for both methods to calculate Weight curve
+    height_cm = st.number_input("Height (cm):", min_value=140.0, max_value=220.0, value=170.0, step=0.5)
+
+    if input_method == "Enter BMI & Height":
+        bmi_pre = st.slider("Preoperative BMI:", min_value=30.0, max_value=70.0, value=42.0, step=0.1)
+    else: # "Enter Weight & Height"
+        weight_kg = st.number_input("Weight (kg):", min_value=50.0, max_value=300.0, value=120.0, step=0.5)
+
 
     st.subheader("Medical Conditions")
     hypertension = st.checkbox("Hypertension")
@@ -497,6 +401,20 @@ with output_col:
     st.header("Prediction Results")
 
     if predict_button:
+        # MODIFICATION: Calculate BMI if needed and prepare inputs
+        height_m = height_cm / 100.0
+        if height_m <= 0:
+            st.error("Height must be greater than 0.")
+            st.stop() # Stop execution if height is invalid
+
+        if input_method == "Enter Weight & Height":
+            if weight_kg > 0:
+                bmi_pre = weight_kg / (height_m ** 2)
+                st.info(f"Calculated Preoperative BMI: {bmi_pre:.1f}")
+            else:
+                st.error("Weight must be greater than 0.")
+                st.stop() # Stop execution if weight is invalid
+
         with st.spinner("Calculating patient's trajectory..."):
             # Prepare input dataframe
             input_data = {
@@ -516,21 +434,39 @@ with output_col:
             dataframe_input = pd.DataFrame(input_data)
             
             # Run prediction
-            summary_df = parser_user_input(dataframe_input, reg_model, clf_model)
+            summary_df = parser_user_input(dataframe_input, reg_model, clf_model, height_m)
             
-            # Display results
+            # MODIFICATION: Display both BMI and Weight results, removing the toggle
             st.subheader("Predicted Outcomes at Key Timepoints")
-            cols = st.columns(3)
+            
+            # Display BMI Metrics
+            st.markdown("##### BMI")
+            cols_bmi = st.columns(3)
             bmi_1y = summary_df.loc[summary_df['Time'] == '12m', 'BMI'].values[0]
             bmi_3y = summary_df.loc[summary_df['Time'] == '3y', 'BMI'].values[0]
             bmi_5y = summary_df.loc[summary_df['Time'] == '5y', 'BMI'].values[0]
-            
-            cols[0].metric(label="BMI at 1 Year", value=f"{bmi_1y:.1f}")
-            cols[1].metric(label="BMI at 3 Years", value=f"{bmi_3y:.1f}")
-            cols[2].metric(label="BMI at 5 Years", value=f"{bmi_5y:.1f}")
+            cols_bmi[0].metric(label="BMI at 1 Year", value=f"{bmi_1y:.1f}")
+            cols_bmi[1].metric(label="BMI at 3 Years", value=f"{bmi_3y:.1f}")
+            cols_bmi[2].metric(label="BMI at 5 Years", value=f"{bmi_5y:.1f}")
 
-            # Create and display animated chart
-            create_animated_bmi_chart(summary_df)
+            # Display Weight Metrics
+            if 'Weight' in summary_df.columns:
+                st.markdown("##### Weight (kg)")
+                cols_weight = st.columns(3)
+                weight_1y = summary_df.loc[summary_df['Time'] == '12m', 'Weight'].values[0]
+                weight_3y = summary_df.loc[summary_df['Time'] == '3y', 'Weight'].values[0]
+                weight_5y = summary_df.loc[summary_df['Time'] == '5y', 'Weight'].values[0]
+                cols_weight[0].metric(label="Weight (kg) at 1 Year", value=f"{weight_1y:.1f}")
+                cols_weight[1].metric(label="Weight (kg) at 3 Years", value=f"{weight_3y:.1f}")
+                cols_weight[2].metric(label="Weight (kg) at 5 Years", value=f"{weight_5y:.1f}")
+
+            # Create and display animated chart for BMI
+            create_animated_chart(summary_df, 'BMI', 'Body Mass Index (BMI)', 'BMI CI Lower', 'BMI CI Upper', target_line_val=25)
+            
+            # Create and display animated chart for Weight
+            if 'Weight' in summary_df.columns:
+                healthy_weight_target = 25 * (height_m ** 2) # Calculate healthy weight based on BMI of 25
+                create_animated_chart(summary_df, 'Weight', 'Weight (kg)', 'Weight CI Lower', 'Weight CI Upper', target_line_val=round(healthy_weight_target, 1))
             
             if DMII_preoperative:
                 st.subheader("Diabetes Remission Likelihood")
@@ -661,4 +597,9 @@ partner_logos = [
     "text" : "",
     "img": images[14]
 }]
-carousel(items=partner_logos, width=0.25)
+# Check if images exist before creating the carousel
+valid_logos = [item for item in partner_logos if os.path.exists(item['img'])]
+if valid_logos:
+    carousel(items=valid_logos, width=0.25)
+else:
+    st.warning("Could not find sponsor images. Please ensure the 'images' directory is present.")
