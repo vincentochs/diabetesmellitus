@@ -340,7 +340,7 @@ except Exception as e:
 
 
 # --- HEADER ---
-st.title("Diabetes Mellitus (DM) Predictor")
+st.title("Diabetes Mellitus (DM) and BMI Predictor")
 st.markdown("This app let you select the patients information and the model is going to predict the BMI evolution of the patient and it's DM probability remission.")
 st.markdown("---")
 
@@ -603,3 +603,4 @@ if valid_logos:
     carousel(items=valid_logos, width=0.25)
 else:
     st.warning("Could not find sponsor images. Please ensure the 'images' directory is present.")
+
